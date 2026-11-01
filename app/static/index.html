@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrustVault — Account access</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="intro">
+      <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
+      <h1>TrustVault</h1>
+      <p class="lede">A secure home for documents and the people you trust with them.</p>
+      <div class="security-note"><span class="dot"></span> Accounts are protected with hashed passwords and expiring access tokens.</div>
+    </section>
+    <section class="card" aria-labelledby="form-title">
+      <div class="tabs" role="tablist" aria-label="Account action">
+        <button id="login-tab" class="tab active" type="button">Sign in</button>
+        <button id="register-tab" class="tab" type="button">Create account</button>
+      </div>
+      <h2 id="form-title">Welcome back</h2>
+      <p id="form-hint" class="muted">Sign in to continue to your workspace.</p>
+      <form id="auth-form">
+        <label id="name-wrap" class="hidden">Full name<input id="full-name" name="full_name" autocomplete="name" maxlength="120"></label>
+        <label>Email address<input id="email" name="email" type="email" autocomplete="email" required maxlength="320" placeholder="you@example.com"></label>
+        <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128" placeholder="At least 12 characters"></label>
+        <button id="submit-button" class="primary" type="submit">Sign in</button>
+      </form>
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+      <div id="account-panel" class="account-panel hidden">
+        <p class="eyebrow">SIGNED IN</p><p id="account-name" class="account-name"></p><p id="account-email" class="muted"></p>
+        <button id="logout-button" class="secondary" type="button">Sign out</button>
+      </div>
+      <p class="footnote">New accounts start as members. Administrator accounts are created locally by an operator.</p>
+    </section>
+    <footer>TrustVault <span>·</span> Day 1 foundation</footer>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
