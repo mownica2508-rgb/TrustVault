@@ -7,4 +7,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 uploads/
+private_storage/
 *.log
