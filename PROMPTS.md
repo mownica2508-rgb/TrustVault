@@ -22,3 +22,15 @@ Build a Python edition of TrustVault from the Snovasys document management chall
 ### Day 1
 
 Created the FastAPI foundation, MySQL/SQLAlchemy setup, initial Alembic migration, account registration/login/current-user endpoints, Argon2 password hashing, HS256 JWT bearer authentication, a local admin creation command, and a small browser sign-in/register page. Added setup and threat documentation. No document endpoints or file storage are present yet.
+
+### Day 2
+
+Added document metadata and an Alembic migration, owner-scoped upload/list/search/detail/preview/download/replace/update/delete routes, a private local storage helper, and an authenticated document workspace UI. Uploads are limited to PDF, DOCX, and UTF-8 TXT with a 10 MB default cap, random storage names, SHA-256 metadata, filename/path checks, and content-structure checks. Added `python-multipart` for multipart forms. Sharing, audit events, malware scanning, and automated authorization tests remain outstanding; they must not be described as complete until implemented and verified.
+
+## Reference review
+
+### TrustVault Java reference
+
+Reviewed the supplied `TrustVault-master.zip` as a behavior and documentation reference only; no Java source was copied. Its README describes registration, administrator/owner/viewer roles, document management, sharing and revocation, audit activity, and a Gemini assistant. Its own documentation identifies upload/download validation and comprehensive authorization testing as unfinished or requiring further verification.
+
+For the Python edition, prioritize complete server-side document authorization, private and validated file handling, immediate revocation, useful audit records, and automated tests that demonstrate the boundaries. Keep AI integration out of scope unless the required security flows are finished and there is time to implement and verify it responsibly.
