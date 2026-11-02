@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,6 +12,8 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = Field(default=30, ge=1, le=1440)
+    storage_dir: Path = Path("private_storage")
+    max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -32,6 +35,13 @@ class Settings(BaseSettings):
         if value != "HS256":
             raise ValueError("Only HS256 is currently supported")
         return value
+
+    @property
+    def resolved_storage_dir(self) -> Path:
+        path = self.storage_dir.expanduser()
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[2] / path
+        return path.resolve()
 
 
 @lru_cache
