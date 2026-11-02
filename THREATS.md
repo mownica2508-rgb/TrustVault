@@ -1,6 +1,6 @@
 # TrustVault threat model
 
-This threat model is scoped to the Day 1 account and application foundation. It will be expanded as uploads, sharing, and audit features are added.
+This threat model tracks the account and document features implemented so far. It will be expanded as sharing, audit, and administration features are added.
 
 ## Assets
 
@@ -24,6 +24,16 @@ This threat model is scoped to the Day 1 account and application foundation. It 
 - Admin creation is local and interactive; it does not accept a role field from an HTTP request.
 - MySQL table creation is migration-based. Configuration secrets are read from the environment and `.env` is ignored by Git.
 
+## Day 2 document handling controls
+
+- Only PDF, DOCX, and UTF-8 TXT are accepted, with a configurable 10 MB default limit. Extension allowlisting is combined with content/structure checks; client MIME headers are not trusted.
+- Files use random internal names and live in a private directory outside the mounted static directory. Original filenames are sanitized and used only as metadata/download names.
+- The backend never accepts a storage path from a request. Database storage keys are validated before opening a file.
+- Document routes scope IDs to the authenticated owner and return 404 for non-owner access, including direct-ID requests. Downloads use attachment disposition, `nosniff`, and `private, no-store` caching. Inline previews are limited to PDF/TXT and receive a restrictive sandbox CSP.
+- The browser renders document values with `textContent` and submits bearer credentials to the API; authorization remains server-side.
+- The content checks do not replace antivirus scanning. Scanning, audit records, sharing, and automated IDOR/revocation tests remain future work.
+- The application rejects stored file copies above its configured limit. A hosting proxy/body-size limit is also needed because multipart parsing may spool request data before the route applies its file-level cap.
+
 ## Known risks and planned mitigations
 
 | Threat | Current status / next control |
@@ -36,7 +46,7 @@ This threat model is scoped to the Day 1 account and application foundation. It 
 | SQL injection | Use SQLAlchemy parameterized queries. Avoid raw SQL built from request strings. |
 | Email enumeration | Login response is generic. Registration currently returns a duplicate-account conflict, which can disclose account existence; assess a uniform registration response or email verification before deployment. |
 | Cross-site scripting | Day 1 UI renders API data with `textContent`; avoid inserting untrusted strings as HTML and add a restrictive Content Security Policy when deployment headers are configured. |
-| Insecure file exposure / IDOR | No file endpoints exist yet. Future document APIs must authorize every object lookup and stream only from private storage after permission checks. |
+| Insecure file exposure / IDOR | Day 2 routes check ownership for metadata and file operations, use random private storage names, and return 404 for non-owner IDs. Sharing-specific authorization and automated IDOR tests are still pending. |
 | Audit tampering or missing denied events | Audit logging is not implemented yet. Design append-only permissions and record successful and denied actions in the later audit phase. |
 
 ## Security assumptions
