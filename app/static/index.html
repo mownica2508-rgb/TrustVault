@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TrustVault — Account access</title>
+  <title>TrustVault — Private documents</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
     <section class="intro">
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>TrustVault</h1>
-      <p class="lede">A secure home for documents and the people you trust with them.</p>
-      <div class="security-note"><span class="dot"></span> Accounts are protected with hashed passwords and expiring access tokens.</div>
+      <p class="lede">Keep important files organized in a private workspace.</p>
+      <div class="security-note"><span class="dot"></span> Files stay private and every file request is checked by the server.</div>
     </section>
     <section class="card" aria-labelledby="form-title">
       <div class="tabs" role="tablist" aria-label="Account action">
@@ -32,9 +32,39 @@
         <p class="eyebrow">SIGNED IN</p><p id="account-name" class="account-name"></p><p id="account-email" class="muted"></p>
         <button id="logout-button" class="secondary" type="button">Sign out</button>
       </div>
-      <p class="footnote">New accounts start as members. Administrator accounts are created locally by an operator.</p>
+      <section id="documents-panel" class="documents-panel hidden" aria-labelledby="documents-heading">
+        <div class="section-heading"><div><p class="eyebrow">YOUR PRIVATE LIBRARY</p><h3 id="documents-heading">Documents</h3></div><span id="document-count" class="count-pill">0 files</span></div>
+        <form id="upload-form" class="upload-form">
+          <label>Document title<input id="upload-title" name="title" maxlength="160" placeholder="Leave blank to use the filename"></label>
+          <label>Category<input id="upload-category" name="category" maxlength="80" placeholder="For example, Contracts"></label>
+          <label class="file-label">Choose a file<input id="upload-file" name="file" type="file" accept=".pdf,.docx,.txt" required></label>
+          <p class="field-note">PDF, DOCX, or UTF-8 TXT · maximum 10 MB</p>
+          <button id="upload-button" class="primary" type="submit">Upload document</button>
+        </form>
+        <form id="search-form" class="search-form">
+          <label>Name<input id="filter-name" type="search" placeholder="Search title or filename"></label>
+          <label>Owner<input id="filter-owner" type="search" placeholder="Name or email"></label>
+          <label>Category<input id="filter-category" type="search" placeholder="Any category"></label>
+          <label>From<input id="filter-from" type="date"></label>
+          <label>To<input id="filter-to" type="date"></label>
+          <button class="secondary" type="submit">Search</button>
+          <button id="clear-search" class="text-button" type="button">Clear filters</button>
+        </form>
+        <div id="document-message" class="message" role="status" aria-live="polite"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Document</th><th>Category</th><th>Uploaded</th><th>Size</th><th>Actions</th></tr></thead>
+            <tbody id="document-rows"><tr><td colspan="5" class="empty-state">No documents yet. Upload one to get started.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+      <p class="footnote">Day 2: private document storage, owner controls, and document search.</p>
     </section>
-    <footer>TrustVault <span>·</span> Day 1 foundation</footer>
+    <dialog id="preview-dialog" class="preview-dialog" aria-label="Document preview">
+      <div class="preview-heading"><strong id="preview-title">Document preview</strong><button id="close-preview" class="secondary" type="button">Close</button></div>
+      <iframe id="preview-frame" title="Private document preview" sandbox></iframe>
+    </dialog>
+    <footer>TrustVault <span>·</span> Private by design</footer>
   </main>
   <script src="/static/app.js" defer></script>
 </body>
