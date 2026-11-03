@@ -12,6 +12,9 @@ const documentRows = document.querySelector('#document-rows');
 const documentMessage = document.querySelector('#document-message');
 const previewDialog = document.querySelector('#preview-dialog');
 const previewFrame = document.querySelector('#preview-frame');
+const shareDialog = document.querySelector('#share-dialog');
+const shareMessage = document.querySelector('#share-message');
+let sharingDocument = null;
 let previewObjectUrl = null;
 let mode = 'login';
 
@@ -78,7 +81,7 @@ function addActionButton(container, label, onClick, className = '') {
   return button;
 }
 
-function renderDocument(documentItem) {
+function renderDocument(documentItem, shared = false) {
   const row = document.createElement('tr');
   const nameCell = document.createElement('td');
   const displayTitle = document.createElement('span');
@@ -86,7 +89,7 @@ function renderDocument(documentItem) {
   displayTitle.textContent = documentItem.title;
   const filename = document.createElement('span');
   filename.className = 'doc-filename';
-  filename.textContent = documentItem.original_filename;
+  filename.textContent = shared ? `${documentItem.original_filename} · shared by ${documentItem.owner_name}` : documentItem.original_filename;
   nameCell.append(displayTitle, filename);
 
   const categoryCell = document.createElement('td');
@@ -133,7 +136,8 @@ function renderDocument(documentItem) {
     }
   });
 
-  addActionButton(actions, 'Edit details', async () => {
+  const canEdit = !shared || documentItem.access_level === 'edit';
+  if (canEdit) addActionButton(actions, 'Edit details', async () => {
     const nextTitle = window.prompt('Document title:', documentItem.title);
     if (nextTitle === null) return;
     const nextCategory = window.prompt('Category (leave blank to clear):', documentItem.category || '');
@@ -151,28 +155,42 @@ function renderDocument(documentItem) {
     }
   });
 
-  const replaceInput = document.createElement('input');
-  replaceInput.type = 'file';
-  replaceInput.accept = '.pdf,.docx,.txt';
-  replaceInput.addEventListener('change', async () => {
-    const replacement = replaceInput.files?.[0];
-    if (!replacement) return;
-    const data = new FormData();
-    data.append('file', replacement);
-    try {
-      await apiRequest(`/api/documents/${documentItem.id}/file`, { method: 'PUT', body: data });
-      showDocumentMessage('Document file replaced.', true);
-      await loadDocuments();
-    } catch (error) {
-      showDocumentMessage(error.message);
-    } finally {
-      replaceInput.value = '';
-    }
-  });
-  actions.append(replaceInput);
-  addActionButton(actions, 'Replace file', () => replaceInput.click());
+  if (canEdit) {
+    const replaceInput = document.createElement('input');
+    replaceInput.type = 'file';
+    replaceInput.accept = '.pdf,.docx,.txt';
+    replaceInput.addEventListener('change', async () => {
+      const replacement = replaceInput.files?.[0];
+      if (!replacement) return;
+      const data = new FormData();
+      data.append('file', replacement);
+      try {
+        await apiRequest(`/api/documents/${documentItem.id}/file`, { method: 'PUT', body: data });
+        showDocumentMessage('Document file replaced.', true);
+        await loadDocuments();
+        await loadSharedDocuments();
+      } catch (error) {
+        showDocumentMessage(error.message);
+      } finally {
+        replaceInput.value = '';
+      }
+    });
+    actions.append(replaceInput);
+    addActionButton(actions, 'Replace file', () => replaceInput.click());
+  }
 
-  addActionButton(actions, 'Delete', async () => {
+  if (!shared) addActionButton(actions, 'Share', async () => {
+    sharingDocument = documentItem;
+    document.querySelector('#share-title').textContent = 'Share document';
+    document.querySelector('#share-document-name').textContent = `People you name can receive Read or Edit access to “${documentItem.title}”.`;
+    document.querySelector('#share-email').value = '';
+    document.querySelector('#share-access').value = 'read';
+    shareMessage.textContent = '';
+    shareDialog.showModal();
+    await loadGrants();
+  });
+
+  if (!shared) addActionButton(actions, 'Delete', async () => {
     if (!window.confirm(`Delete “${documentItem.title}”? This cannot be undone.`)) return;
     try {
       await apiRequest(`/api/documents/${documentItem.id}`, { method: 'DELETE' });
@@ -184,11 +202,22 @@ function renderDocument(documentItem) {
   }, 'danger');
 
   actionCell.append(actions);
-  row.append(nameCell, categoryCell, dateCell, sizeCell, actionCell);
+  if (shared) {
+    const ownerCell = document.createElement('td');
+    ownerCell.textContent = documentItem.owner_name;
+    const accessCell = document.createElement('td');
+    const access = document.createElement('span');
+    access.className = 'access-pill';
+    access.textContent = documentItem.access_level.toUpperCase();
+    accessCell.append(access);
+    row.append(nameCell, ownerCell, accessCell, dateCell, actionCell);
+  } else {
+    row.append(nameCell, categoryCell, dateCell, sizeCell, actionCell);
+  }
   return row;
 }
 
-async function loadDocuments() {
+function searchParams() {
   const params = new URLSearchParams();
   const filters = [
     ['name', '#filter-name'], ['owner', '#filter-owner'], ['category', '#filter-category'],
@@ -198,7 +227,12 @@ async function loadDocuments() {
     const value = document.querySelector(selector).value.trim();
     if (value) params.set(key, value);
   }
+  return params;
+}
+
+async function loadDocuments() {
   try {
+    const params = searchParams();
     const docs = await apiRequest(`/api/documents?${params.toString()}`);
     document.querySelector('#document-count').textContent = `${docs.length} ${docs.length === 1 ? 'file' : 'files'}`;
     documentRows.replaceChildren();
@@ -218,6 +252,69 @@ async function loadDocuments() {
   }
 }
 
+async function loadSharedDocuments() {
+  const rows = document.querySelector('#shared-rows');
+  try {
+    const params = searchParams();
+    const docs = await apiRequest(`/api/documents/shared?${params.toString()}`);
+    document.querySelector('#shared-count').textContent = `${docs.length} ${docs.length === 1 ? 'file' : 'files'}`;
+    rows.replaceChildren();
+    if (!docs.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 5;
+      cell.className = 'empty-state';
+      cell.textContent = 'No documents match these filters or have been shared with you.';
+      row.append(cell);
+      rows.append(row);
+      return;
+    }
+    for (const item of docs) {
+      const row = renderDocument(item, true);
+      rows.append(row);
+    }
+  } catch (error) {
+    showDocumentMessage(error.message);
+  }
+}
+
+async function loadGrants() {
+  const container = document.querySelector('#share-grants');
+  container.replaceChildren();
+  try {
+    const grants = await apiRequest(`/api/documents/${sharingDocument.id}/permissions`);
+    if (!grants.length) {
+      container.textContent = 'No one has access yet.';
+      return;
+    }
+    for (const grant of grants) {
+      const row = document.createElement('div');
+      row.className = 'grant-row';
+      const person = document.createElement('span');
+      person.textContent = `${grant.recipient_name} · ${grant.recipient_email} · ${grant.access_level.toUpperCase()}`;
+      const revoke = document.createElement('button');
+      revoke.type = 'button';
+      revoke.className = 'revoke-button';
+      revoke.textContent = 'Revoke';
+      revoke.addEventListener('click', async () => {
+        try {
+          await apiRequest(`/api/documents/${sharingDocument.id}/permissions/${grant.id}`, { method: 'DELETE' });
+          shareMessage.textContent = 'Access revoked. They can no longer open this document.';
+          shareMessage.classList.add('success');
+          await loadGrants();
+        } catch (error) {
+          shareMessage.textContent = error.message;
+          shareMessage.classList.remove('success');
+        }
+      });
+      row.append(person, revoke);
+      container.append(row);
+    }
+  } catch (error) {
+    shareMessage.textContent = error.message;
+  }
+}
+
 async function loadAccount() {
   const token = sessionStorage.getItem('trustvault_access_token');
   if (!token) return;
@@ -230,8 +327,8 @@ async function loadAccount() {
     form.classList.add('hidden');
     document.querySelector('.tabs').classList.add('hidden');
     title.textContent = 'Your workspace';
-    hint.textContent = 'Manage the documents you own. Sharing is coming in the next phase.';
-    await loadDocuments();
+    hint.textContent = 'Manage your files and documents shared with you.';
+    await Promise.all([loadDocuments(), loadSharedDocuments()]);
   } catch (error) {
     sessionStorage.removeItem('trustvault_access_token');
     showMessage(error.message);
@@ -295,11 +392,13 @@ document.querySelector('#search-form').addEventListener('submit', (event) => {
   event.preventDefault();
   showDocumentMessage('');
   loadDocuments();
+  loadSharedDocuments();
 });
 document.querySelector('#clear-search').addEventListener('click', () => {
   document.querySelector('#search-form').reset();
   showDocumentMessage('');
   loadDocuments();
+  loadSharedDocuments();
 });
 document.querySelector('#close-preview').addEventListener('click', () => previewDialog.close());
 previewDialog.addEventListener('close', () => {
@@ -307,5 +406,29 @@ previewDialog.addEventListener('close', () => {
   if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
   previewObjectUrl = null;
 });
+
+document.querySelector('#share-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = document.querySelector('#share-submit');
+  button.disabled = true;
+  shareMessage.textContent = '';
+  shareMessage.classList.remove('success');
+  try {
+    await apiRequest(`/api/documents/${sharingDocument.id}/permissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: document.querySelector('#share-email').value, access_level: document.querySelector('#share-access').value }),
+    });
+    shareMessage.textContent = 'Access granted. The recipient will see it in “Shared with me”.';
+    shareMessage.classList.add('success');
+    document.querySelector('#share-email').value = '';
+    await loadGrants();
+  } catch (error) {
+    shareMessage.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+document.querySelector('#close-share').addEventListener('click', () => shareDialog.close());
 
 loadAccount();
