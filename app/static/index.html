@@ -57,9 +57,30 @@
             <tbody id="document-rows"><tr><td colspan="5" class="empty-state">No documents yet. Upload one to get started.</td></tr></tbody>
           </table>
         </div>
+        <section class="shared-section" aria-labelledby="shared-heading">
+          <div class="section-heading"><div><p class="eyebrow">DOCUMENTS SHARED WITH YOU</p><h3 id="shared-heading">Shared with me</h3></div><span id="shared-count" class="count-pill">0 files</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Document</th><th>Owner</th><th>Access</th><th>Uploaded</th><th>Actions</th></tr></thead>
+              <tbody id="shared-rows"><tr><td colspan="5" class="empty-state">No documents have been shared with you.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
       </section>
-      <p class="footnote">Day 2: private document storage, owner controls, and document search.</p>
+      <p class="footnote">Only people with an active document permission can open a shared file.</p>
     </section>
+    <dialog id="share-dialog" class="share-dialog" aria-labelledby="share-title">
+      <div class="preview-heading"><strong id="share-title">Share document</strong><button id="close-share" class="secondary" type="button">Close</button></div>
+      <p id="share-document-name" class="muted"></p>
+      <form id="share-form">
+        <label>Registered person's email<input id="share-email" type="email" autocomplete="email" required maxlength="320" placeholder="person@example.com"></label>
+        <label>Permission<select id="share-access"><option value="read">Read</option><option value="edit">Edit (read + change details or file)</option></select></label>
+        <button id="share-submit" class="primary" type="submit">Grant access</button>
+      </form>
+      <p id="share-message" class="message" role="status" aria-live="polite"></p>
+      <h3 class="share-list-title">People with access</h3>
+      <div id="share-grants" class="share-grants"></div>
+    </dialog>
     <dialog id="preview-dialog" class="preview-dialog" aria-label="Document preview">
       <div class="preview-heading"><strong id="preview-title">Document preview</strong><button id="close-preview" class="secondary" type="button">Close</button></div>
       <iframe id="preview-frame" title="Private document preview" sandbox></iframe>
