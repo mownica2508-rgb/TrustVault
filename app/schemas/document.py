@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.models.permission import AccessLevel
 
 
 class DocumentResponse(BaseModel):
@@ -22,4 +24,21 @@ class DocumentResponse(BaseModel):
 class DocumentUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     category: str | None = Field(default=None, max_length=80)
+
+
+class ShareRequest(BaseModel):
+    email: EmailStr
+    access_level: AccessLevel
+
+
+class PermissionResponse(BaseModel):
+    id: int
+    recipient_email: EmailStr
+    recipient_name: str
+    access_level: AccessLevel
+    created_at: datetime
+
+
+class SharedDocumentResponse(DocumentResponse):
+    access_level: AccessLevel
 
