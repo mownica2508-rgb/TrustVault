@@ -1,28 +1,103 @@
-from datetime import date
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
 from app.core.file_storage import UploadRejected, remove_stored_file, save_upload, stored_path
+from app.models.audit import AuditEvent
 from app.models.document import Document
+from app.models.permission import AccessLevel, DocumentPermission
 from app.models.user import User
-from app.schemas.document import DocumentResponse, DocumentUpdate
+from app.schemas.document import (
+    DocumentResponse,
+    DocumentUpdate,
+    PermissionResponse,
+    ShareRequest,
+    SharedDocumentResponse,
+)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
-def _owner_document(db: Session, document_id: int, user_id: int) -> Document:
-    document = db.scalar(
-        select(Document).where(Document.id == document_id, Document.owner_id == user_id)
+def _audit(
+    db: Session,
+    actor_id: int,
+    action: str,
+    outcome: str,
+    document_id: int | None = None,
+    **details: object,
+) -> None:
+    db.add(AuditEvent(
+        actor_id=actor_id,
+        document_id=document_id,
+        action=action,
+        outcome=outcome,
+        details=json.dumps(details, separators=(",", ":"), default=str) if details else None,
+    ))
+
+
+def _deny(
+    db: Session,
+    user: User,
+    action: str,
+    document_id: int,
+    *,
+    status_code: int = 404,
+    detail: str = "Document not found",
+) -> None:
+    _audit(db, user.id, action, "denied", document_id)
+    db.commit()
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+def _document(db: Session, document_id: int) -> Document | None:
+    return db.scalar(select(Document).where(Document.id == document_id))
+
+
+def _active_permission(db: Session, document_id: int, recipient_id: int) -> DocumentPermission | None:
+    return db.scalar(
+        select(DocumentPermission)
+        .where(
+            DocumentPermission.document_id == document_id,
+            DocumentPermission.recipient_id == recipient_id,
+            DocumentPermission.revoked_at.is_(None),
+        )
+        .order_by(DocumentPermission.id.desc())
     )
+
+
+def _require_document(
+    db: Session,
+    document_id: int,
+    user: User,
+    action: str,
+    required: AccessLevel = AccessLevel.READ,
+) -> tuple[Document, AccessLevel]:
+    document = _document(db, document_id)
     if document is None:
-        # A uniform 404 avoids confirming that another user owns this ID.
-        raise HTTPException(status_code=404, detail="Document not found")
+        _deny(db, user, action, document_id)
+    if document.owner_id == user.id:
+        return document, AccessLevel.EDIT
+    grant = _active_permission(db, document_id, user.id)
+    permitted = grant is not None and (
+        required == AccessLevel.READ
+        or grant.access_level == AccessLevel.EDIT
+    )
+    if not permitted:
+        _deny(db, user, action, document_id)
+    return document, grant.access_level
+
+
+def _require_owner(db: Session, document_id: int, user: User, action: str) -> Document:
+    document = _document(db, document_id)
+    if document is None or document.owner_id != user.id:
+        _deny(db, user, action, document_id)
     return document
 
 
@@ -57,11 +132,34 @@ def _clean_label(value: str | None, field: str, maximum: int, *, required: bool)
     return cleaned
 
 
-def _save_file(upload: UploadFile):
+def _save_file(upload: UploadFile, db: Session, user: User, document_id: int | None = None):
     try:
         return save_upload(upload.file, upload.filename)
     except UploadRejected as exc:
+        _audit(db, user.id, "upload" if document_id is None else "file_replace", "denied",
+               document_id, reason="validation_rejected")
+        db.commit()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def _apply_filters(query, *, name, owner, category, date_from, date_to):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from must be on or before date_to")
+    if name and name.strip():
+        needle = f"%{name.strip()}%"
+        query = query.where(or_(Document.title.ilike(needle), Document.original_filename.ilike(needle)))
+    if owner and owner.strip():
+        needle = f"%{owner.strip()}%"
+        query = query.join(User, User.id == Document.owner_id).where(
+            or_(User.full_name.ilike(needle), User.email.ilike(needle))
+        )
+    if category and category.strip():
+        query = query.where(Document.category.ilike(f"%{category.strip()}%"))
+    if date_from:
+        query = query.where(func.date(Document.created_at) >= date_from)
+    if date_to:
+        query = query.where(func.date(Document.created_at) <= date_to)
+    return query
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -74,7 +172,7 @@ def upload_document(
 ) -> DocumentResponse:
     document_title = _clean_label(title, "Title", 160, required=False)
     document_category = _clean_label(category, "Category", 80, required=False)
-    stored = _save_file(file)
+    stored = _save_file(file, db, user)
     if document_title is None:
         document_title = Path(stored.original_filename).stem[:160].strip() or "Untitled document"
     document = Document(
@@ -89,6 +187,8 @@ def upload_document(
     )
     db.add(document)
     try:
+        db.flush()
+        _audit(db, user.id, "upload", "success", document.id)
         db.commit()
         db.refresh(document)
     except Exception:
@@ -110,27 +210,131 @@ def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[DocumentResponse]:
-    if date_from and date_to and date_from > date_to:
-        raise HTTPException(status_code=422, detail="date_from must be on or before date_to")
-    query = select(Document).where(Document.owner_id == user.id)
-    if name and name.strip():
-        needle = f"%{name.strip()}%"
-        query = query.where((Document.title.ilike(needle)) | (Document.original_filename.ilike(needle)))
-    if owner and owner.strip():
-        needle = f"%{owner.strip()}%"
-        query = query.join(User, User.id == Document.owner_id).where(
-            (User.full_name.ilike(needle)) | (User.email.ilike(needle))
-        )
-    if category and category.strip():
-        query = query.where(Document.category.ilike(f"%{category.strip()}%"))
-    if date_from:
-        query = query.where(func.date(Document.created_at) >= date_from)
-    if date_to:
-        query = query.where(func.date(Document.created_at) <= date_to)
+    query = _apply_filters(
+        select(Document).where(Document.owner_id == user.id),
+        name=name, owner=owner, category=category, date_from=date_from, date_to=date_to,
+    )
     documents = db.scalars(
         query.order_by(Document.created_at.desc(), Document.id.desc()).offset(offset).limit(limit)
     ).all()
     return [_response(document) for document in documents]
+
+
+@router.get("/shared", response_model=list[SharedDocumentResponse])
+def list_shared_documents(
+    name: str | None = Query(default=None, max_length=160),
+    owner: str | None = Query(default=None, max_length=320),
+    category: str | None = Query(default=None, max_length=80),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SharedDocumentResponse]:
+    query = (
+        select(Document, DocumentPermission.access_level)
+        .join(DocumentPermission, DocumentPermission.document_id == Document.id)
+        .where(DocumentPermission.recipient_id == user.id, DocumentPermission.revoked_at.is_(None))
+    )
+    query = _apply_filters(
+        query, name=name, owner=owner, category=category, date_from=date_from, date_to=date_to
+    )
+    rows = db.execute(
+        query.order_by(Document.created_at.desc(), Document.id.desc()).offset(offset).limit(limit)
+    ).all()
+    result = []
+    for document, access_level in rows:
+        base = _response(document).model_dump()
+        result.append(SharedDocumentResponse(**base, access_level=access_level))
+    return result
+
+
+@router.get("/{document_id}/permissions", response_model=list[PermissionResponse])
+def list_permissions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PermissionResponse]:
+    document = _require_owner(db, document_id, user, "list_permissions")
+    grants = db.scalars(
+        select(DocumentPermission)
+        .where(DocumentPermission.document_id == document.id, DocumentPermission.revoked_at.is_(None))
+        .order_by(DocumentPermission.id)
+    ).all()
+    return [
+        PermissionResponse(
+            id=grant.id,
+            recipient_email=grant.recipient.email,
+            recipient_name=grant.recipient.full_name,
+            access_level=grant.access_level,
+            created_at=grant.created_at,
+        )
+        for grant in grants
+    ]
+
+
+@router.post("/{document_id}/permissions", response_model=PermissionResponse, status_code=201)
+def grant_permission(
+    document_id: int,
+    payload: ShareRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PermissionResponse:
+    document = _require_owner(db, document_id, user, "grant_permission")
+    email = str(payload.email).strip().lower()
+    recipient = db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+    if recipient is None or recipient.id == user.id:
+        _deny(db, user, "grant_permission", document.id, status_code=404, detail="Account not found")
+    existing = _active_permission(db, document.id, recipient.id)
+    if existing:
+        existing.access_level = payload.access_level
+        grant = existing
+        action = "permission_updated"
+    else:
+        grant = DocumentPermission(
+            document_id=document.id,
+            recipient_id=recipient.id,
+            granted_by_id=user.id,
+            access_level=payload.access_level,
+        )
+        db.add(grant)
+        action = "permission_granted"
+    _audit(db, user.id, action, "success", document.id, recipient_id=recipient.id,
+           access_level=payload.access_level.value)
+    db.commit()
+    db.refresh(grant)
+    return PermissionResponse(
+        id=grant.id,
+        recipient_email=recipient.email,
+        recipient_name=recipient.full_name,
+        access_level=grant.access_level,
+        created_at=grant.created_at,
+    )
+
+
+@router.delete("/{document_id}/permissions/{grant_id}", status_code=204)
+def revoke_permission(
+    document_id: int,
+    grant_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    document = _require_owner(db, document_id, user, "revoke_permission")
+    grant = db.scalar(
+        select(DocumentPermission).where(
+            DocumentPermission.id == grant_id,
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.revoked_at.is_(None),
+        )
+    )
+    if grant is None:
+        _deny(db, user, "revoke_permission", document_id, status_code=404)
+    grant.revoked_at = datetime.now(timezone.utc)
+    _audit(db, user.id, "permission_revoked", "success", document.id,
+           recipient_id=grant.recipient_id, access_level=grant.access_level.value)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -139,7 +343,39 @@ def get_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DocumentResponse:
-    return _response(_owner_document(db, document_id, user.id))
+    document, _ = _require_document(db, document_id, user, "metadata_read")
+    _audit(db, user.id, "metadata_read", "success", document.id)
+    db.commit()
+    return _response(document)
+
+
+def _file_response(db: Session, document: Document, user: User, *, inline: bool) -> FileResponse:
+    action = "view" if inline else "download"
+    try:
+        path = stored_path(document.storage_name)
+    except FileNotFoundError:
+        _audit(db, user.id, action, "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document file not found")
+    if not path.is_file():
+        _audit(db, user.id, action, "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document file not found")
+    _audit(db, user.id, action, "success", document.id)
+    db.commit()
+    headers = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+    if inline:
+        headers.update({
+            "Content-Security-Policy": "sandbox; default-src 'none'; object-src 'none'",
+            "X-Frame-Options": "SAMEORIGIN",
+        })
+    return FileResponse(
+        path,
+        media_type=document.content_type,
+        filename=document.original_filename,
+        content_disposition_type="inline" if inline else "attachment",
+        headers=headers,
+    )
 
 
 @router.get("/{document_id}/download")
@@ -148,20 +384,8 @@ def download_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FileResponse:
-    document = _owner_document(db, document_id, user.id)
-    try:
-        path = stored_path(document.storage_name)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Document file not found")
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found")
-    return FileResponse(
-        path,
-        media_type=document.content_type,
-        filename=document.original_filename,
-        content_disposition_type="attachment",
-        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
-    )
+    document, _ = _require_document(db, document_id, user, "download")
+    return _file_response(db, document, user, inline=False)
 
 
 @router.get("/{document_id}/view")
@@ -170,27 +394,12 @@ def view_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FileResponse:
-    document = _owner_document(db, document_id, user.id)
+    document, _ = _require_document(db, document_id, user, "view")
     if document.content_type not in {"application/pdf", "text/plain"}:
+        _audit(db, user.id, "view", "denied", document.id, reason="unsupported_preview")
+        db.commit()
         raise HTTPException(status_code=415, detail="In-browser preview is available for PDF and TXT files")
-    try:
-        path = stored_path(document.storage_name)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Document file not found")
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found")
-    return FileResponse(
-        path,
-        media_type=document.content_type,
-        filename=document.original_filename,
-        content_disposition_type="inline",
-        headers={
-            "Cache-Control": "private, no-store",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "sandbox; default-src 'none'; object-src 'none'",
-            "X-Frame-Options": "SAMEORIGIN",
-        },
-    )
+    return _file_response(db, document, user, inline=True)
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
@@ -200,12 +409,13 @@ def update_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DocumentResponse:
-    document = _owner_document(db, document_id, user.id)
+    document, _ = _require_document(db, document_id, user, "metadata_update", AccessLevel.EDIT)
     fields = payload.model_fields_set
     if "title" in fields:
         document.title = _clean_label(payload.title, "Title", 160, required=True)
     if "category" in fields:
         document.category = _clean_label(payload.category, "Category", 80, required=False)
+    _audit(db, user.id, "metadata_update", "success", document.id)
     db.commit()
     db.refresh(document)
     return _response(document)
@@ -218,8 +428,8 @@ def replace_document_file(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DocumentResponse:
-    document = _owner_document(db, document_id, user.id)
-    stored = _save_file(file)
+    document, _ = _require_document(db, document_id, user, "file_replace", AccessLevel.EDIT)
+    stored = _save_file(file, db, user, document.id)
     previous_storage_name = document.storage_name
     document.original_filename = stored.original_filename
     document.storage_name = stored.storage_name
@@ -227,6 +437,7 @@ def replace_document_file(
     document.size_bytes = stored.size_bytes
     document.sha256 = stored.sha256
     try:
+        _audit(db, user.id, "file_replace", "success", document.id)
         db.commit()
         db.refresh(document)
     except Exception:
@@ -243,9 +454,11 @@ def delete_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
-    document = _owner_document(db, document_id, user.id)
+    document = _require_owner(db, document_id, user, "delete")
     storage_name = document.storage_name
+    document_id = document.id
     db.delete(document)
+    _audit(db, user.id, "delete", "success", document_id)
     db.commit()
     remove_stored_file(storage_name)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
