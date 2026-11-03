@@ -25,7 +25,11 @@ Created the FastAPI foundation, MySQL/SQLAlchemy setup, initial Alembic migratio
 
 ### Day 2
 
-Added document metadata and an Alembic migration, owner-scoped upload/list/search/detail/preview/download/replace/update/delete routes, a private local storage helper, and an authenticated document workspace UI. Uploads are limited to PDF, DOCX, and UTF-8 TXT with a 10 MB default cap, random storage names, SHA-256 metadata, filename/path checks, and content-structure checks. Added `python-multipart` for multipart forms. Sharing, audit events, malware scanning, and automated authorization tests remain outstanding; they must not be described as complete until implemented and verified.
+Added document metadata and an Alembic migration, owner-scoped upload/list/search/detail/preview/download/replace/update/delete routes, a private local storage helper, and an authenticated document workspace UI. Uploads are limited to PDF, DOCX, and UTF-8 TXT with a 10 MB default cap, random storage names, SHA-256 metadata, filename/path checks, and content-structure checks. Added `python-multipart` for multipart forms.
+
+### Day 3
+
+Added `document_permissions` grant history with Read/Edit access and revocation timestamps, plus an `audit_events` table. Owners share only with existing registered email addresses and can review or revoke active grants. Every metadata, preview, download, edit, replacement, delete, grant, and revoke route performs a server-side ownership/permission check using current database state. Read allows viewing/downloading; Edit also allows metadata and file changes; only owners can share, revoke, or delete. Added a Shared with me list and owner sharing dialog. Success events and document access denials are recorded. Audit rows have no update/delete API; database-level tamper resistance still depends on production database privilege separation and is a deployment hardening task. Day 4 admin activity UI and automated security tests remain outstanding and should not be described as complete until implemented and verified.
 
 ## Reference review
 
