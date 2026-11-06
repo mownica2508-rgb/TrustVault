@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     app_name: str = "TrustVault"
     environment: str = "development"
     database_url: str = Field(min_length=1)
+    migration_database_url: str | None = None
     jwt_secret: SecretStr
+    audit_hmac_key: SecretStr | None = None
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = Field(default=30, ge=1, le=1440)
     storage_dir: Path = Path("private_storage")
@@ -27,6 +29,13 @@ class Settings(BaseSettings):
     def validate_jwt_secret(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value()) < 32:
             raise ValueError("JWT_SECRET must contain at least 32 characters")
+        return value
+
+    @field_validator("audit_hmac_key")
+    @classmethod
+    def validate_audit_hmac_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("AUDIT_HMAC_KEY must contain at least 32 characters when set")
         return value
 
     @field_validator("jwt_algorithm")
