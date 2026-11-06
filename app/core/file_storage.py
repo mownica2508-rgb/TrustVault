@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import os
 import re
 import tempfile
@@ -129,6 +130,15 @@ def stored_path(storage_name: str) -> Path:
     if not re.fullmatch(r"[0-9a-f]{32}\.(pdf|docx|txt)", storage_name):
         raise FileNotFoundError("Invalid internal storage key")
     return storage_root() / storage_name
+
+
+def verify_file_digest(path: Path, expected_sha256: str) -> bool:
+    """Stream a stored file and compare it with its upload-time digest."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stored:
+        while chunk := stored.read(64 * 1024):
+            digest.update(chunk)
+    return hmac.compare_digest(digest.hexdigest(), expected_sha256)
 
 
 def remove_stored_file(storage_name: str) -> None:
