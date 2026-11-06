@@ -1,24 +1,26 @@
-import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.audit import append_audit
 from app.core.database import get_db
-from app.core.file_storage import UploadRejected, remove_stored_file, save_upload, stored_path
-from app.models.audit import AuditEvent
-from app.models.document import Document
+from app.core.file_storage import UploadRejected, remove_stored_file, save_upload, stored_path, verify_file_digest
+from app.models.document import Document, DocumentVersion
 from app.models.permission import AccessLevel, DocumentPermission
 from app.models.user import User
 from app.schemas.document import (
     DocumentResponse,
+    DocumentSharingStatus,
+    DocumentVersionResponse,
     DocumentUpdate,
     PermissionResponse,
     ShareRequest,
+    SharedRecipient,
     SharedDocumentResponse,
 )
 
@@ -33,13 +35,7 @@ def _audit(
     document_id: int | None = None,
     **details: object,
 ) -> None:
-    db.add(AuditEvent(
-        actor_id=actor_id,
-        document_id=document_id,
-        action=action,
-        outcome=outcome,
-        details=json.dumps(details, separators=(",", ":"), default=str) if details else None,
-    ))
+    append_audit(db, actor_id, action, outcome, document_id, **details)
 
 
 def _deny(
@@ -61,12 +57,14 @@ def _document(db: Session, document_id: int) -> Document | None:
 
 
 def _active_permission(db: Session, document_id: int, recipient_id: int) -> DocumentPermission | None:
+    now = datetime.now(timezone.utc)
     return db.scalar(
         select(DocumentPermission)
         .where(
             DocumentPermission.document_id == document_id,
             DocumentPermission.recipient_id == recipient_id,
             DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > now),
         )
         .order_by(DocumentPermission.id.desc())
     )
@@ -188,6 +186,16 @@ def upload_document(
     db.add(document)
     try:
         db.flush()
+        db.add(DocumentVersion(
+            document_id=document.id,
+            version_number=1,
+            original_filename=stored.original_filename,
+            storage_name=stored.storage_name,
+            content_type=stored.content_type,
+            size_bytes=stored.size_bytes,
+            sha256=stored.sha256,
+            uploaded_by_id=user.id,
+        ))
         _audit(db, user.id, "upload", "success", document.id)
         db.commit()
         db.refresh(document)
@@ -235,7 +243,11 @@ def list_shared_documents(
     query = (
         select(Document, DocumentPermission.access_level)
         .join(DocumentPermission, DocumentPermission.document_id == Document.id)
-        .where(DocumentPermission.recipient_id == user.id, DocumentPermission.revoked_at.is_(None))
+        .where(
+            DocumentPermission.recipient_id == user.id,
+            DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > datetime.now(timezone.utc)),
+        )
     )
     query = _apply_filters(
         query, name=name, owner=owner, category=category, date_from=date_from, date_to=date_to
@@ -250,6 +262,48 @@ def list_shared_documents(
     return result
 
 
+@router.get("/sharing-status", response_model=list[DocumentSharingStatus])
+def list_owned_sharing_status(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[DocumentSharingStatus]:
+    """Return the signed-in owner's documents with their active named recipients."""
+    rows = db.execute(
+        select(Document, DocumentPermission, User)
+        .outerjoin(
+            DocumentPermission,
+            and_(
+                DocumentPermission.document_id == Document.id,
+                DocumentPermission.revoked_at.is_(None),
+                or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > datetime.now(timezone.utc)),
+            ),
+        )
+        .outerjoin(User, User.id == DocumentPermission.recipient_id)
+        .where(Document.owner_id == user.id)
+        .order_by(Document.created_at.desc(), Document.id.desc(), DocumentPermission.id)
+    ).all()
+    grouped: dict[int, dict] = {}
+    for document, grant, recipient in rows:
+        if document.id not in grouped:
+            grouped[document.id] = {
+                **_response(document).model_dump(),
+                "active_share_count": 0,
+                "recipients": [],
+            }
+        if grant is not None and recipient is not None:
+            grouped[document.id]["active_share_count"] += 1
+            grouped[document.id]["recipients"].append(
+                SharedRecipient(
+                    grant_id=grant.id,
+                    full_name=recipient.full_name,
+                    email=recipient.email,
+                    access_level=grant.access_level,
+                    expires_at=grant.expires_at,
+                ).model_dump()
+            )
+    return [DocumentSharingStatus(**item) for item in grouped.values()]
+
+
 @router.get("/{document_id}/permissions", response_model=list[PermissionResponse])
 def list_permissions(
     document_id: int,
@@ -259,7 +313,11 @@ def list_permissions(
     document = _require_owner(db, document_id, user, "list_permissions")
     grants = db.scalars(
         select(DocumentPermission)
-        .where(DocumentPermission.document_id == document.id, DocumentPermission.revoked_at.is_(None))
+        .where(
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > datetime.now(timezone.utc)),
+        )
         .order_by(DocumentPermission.id)
     ).all()
     return [
@@ -269,6 +327,7 @@ def list_permissions(
             recipient_name=grant.recipient.full_name,
             access_level=grant.access_level,
             created_at=grant.created_at,
+            expires_at=grant.expires_at,
         )
         for grant in grants
     ]
@@ -289,6 +348,7 @@ def grant_permission(
     existing = _active_permission(db, document.id, recipient.id)
     if existing:
         existing.access_level = payload.access_level
+        existing.expires_at = payload.expires_at
         grant = existing
         action = "permission_updated"
     else:
@@ -297,6 +357,7 @@ def grant_permission(
             recipient_id=recipient.id,
             granted_by_id=user.id,
             access_level=payload.access_level,
+            expires_at=payload.expires_at,
         )
         db.add(grant)
         action = "permission_granted"
@@ -310,6 +371,7 @@ def grant_permission(
         recipient_name=recipient.full_name,
         access_level=grant.access_level,
         created_at=grant.created_at,
+        expires_at=grant.expires_at,
     )
 
 
@@ -361,6 +423,10 @@ def _file_response(db: Session, document: Document, user: User, *, inline: bool)
         _audit(db, user.id, action, "denied", document.id, reason="stored_file_missing")
         db.commit()
         raise HTTPException(status_code=404, detail="Document file not found")
+    if not verify_file_digest(path, document.sha256):
+        _audit(db, user.id, action, "denied", document.id, reason="stored_file_integrity_mismatch")
+        db.commit()
+        raise HTTPException(status_code=409, detail="Document failed its integrity check")
     _audit(db, user.id, action, "success", document.id)
     db.commit()
     headers = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
@@ -430,7 +496,19 @@ def replace_document_file(
 ) -> DocumentResponse:
     document, _ = _require_document(db, document_id, user, "file_replace", AccessLevel.EDIT)
     stored = _save_file(file, db, user, document.id)
-    previous_storage_name = document.storage_name
+    next_version = (db.scalar(
+        select(func.max(DocumentVersion.version_number)).where(DocumentVersion.document_id == document.id)
+    ) or 0) + 1
+    db.add(DocumentVersion(
+        document_id=document.id,
+        version_number=next_version,
+        original_filename=stored.original_filename,
+        storage_name=stored.storage_name,
+        content_type=stored.content_type,
+        size_bytes=stored.size_bytes,
+        sha256=stored.sha256,
+        uploaded_by_id=user.id,
+    ))
     document.original_filename = stored.original_filename
     document.storage_name = stored.storage_name
     document.content_type = stored.content_type
@@ -444,7 +522,131 @@ def replace_document_file(
         db.rollback()
         remove_stored_file(stored.storage_name)
         raise
-    remove_stored_file(previous_storage_name)
+    return _response(document)
+
+
+@router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])
+def list_document_versions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[DocumentVersionResponse]:
+    document, _ = _require_document(db, document_id, user, "version_list")
+    versions = db.execute(
+        select(DocumentVersion, User.full_name)
+        .outerjoin(User, User.id == DocumentVersion.uploaded_by_id)
+        .where(DocumentVersion.document_id == document.id)
+        .order_by(DocumentVersion.version_number.desc())
+    ).all()
+    current_number = max((version.version_number for version, _ in versions), default=0)
+    _audit(db, user.id, "version_list", "success", document.id)
+    db.commit()
+    return [
+        DocumentVersionResponse(
+            id=version.id,
+            version_number=version.version_number,
+            original_filename=version.original_filename,
+            content_type=version.content_type,
+            size_bytes=version.size_bytes,
+            sha256=version.sha256,
+            uploaded_by_name=uploaded_by,
+            created_at=version.created_at,
+            is_current=version.version_number == current_number,
+        )
+        for version, uploaded_by in versions
+    ]
+
+
+@router.get("/{document_id}/versions/{version_id}/download")
+def download_document_version(
+    document_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    document, _ = _require_document(db, document_id, user, "version_download")
+    version = db.scalar(select(DocumentVersion).where(
+        DocumentVersion.id == version_id,
+        DocumentVersion.document_id == document.id,
+    ))
+    if version is None:
+        _deny(db, user, "version_download", document_id)
+    try:
+        path = stored_path(version.storage_name)
+    except FileNotFoundError:
+        _audit(db, user.id, "version_download", "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document version not found")
+    if not path.is_file():
+        _audit(db, user.id, "version_download", "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document version not found")
+    if not verify_file_digest(path, version.sha256):
+        _audit(db, user.id, "version_download", "denied", document.id,
+               reason="stored_file_integrity_mismatch", version=version.version_number)
+        db.commit()
+        raise HTTPException(status_code=409, detail="Document version failed its integrity check")
+    _audit(db, user.id, "version_download", "success", document.id, version=version.version_number)
+    db.commit()
+    return FileResponse(
+        path,
+        media_type=version.content_type,
+        filename=version.original_filename,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.post("/{document_id}/versions/{version_id}/restore", response_model=DocumentResponse)
+def restore_document_version(
+    document_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DocumentResponse:
+    document = _require_owner(db, document_id, user, "version_restore")
+    version = db.scalar(select(DocumentVersion).where(
+        DocumentVersion.id == version_id,
+        DocumentVersion.document_id == document.id,
+    ))
+    if version is None:
+        _deny(db, user, "version_restore", document_id)
+    try:
+        path = stored_path(version.storage_name)
+    except FileNotFoundError:
+        _audit(db, user.id, "version_restore", "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document version not found")
+    if not path.is_file():
+        _audit(db, user.id, "version_restore", "denied", document.id, reason="stored_file_missing")
+        db.commit()
+        raise HTTPException(status_code=404, detail="Document version not found")
+    if not verify_file_digest(path, version.sha256):
+        _audit(db, user.id, "version_restore", "denied", document.id,
+               reason="stored_file_integrity_mismatch", version=version.version_number)
+        db.commit()
+        raise HTTPException(status_code=409, detail="Document version failed its integrity check")
+    next_version = (db.scalar(
+        select(func.max(DocumentVersion.version_number)).where(DocumentVersion.document_id == document.id)
+    ) or 0) + 1
+    document.original_filename = version.original_filename
+    document.storage_name = version.storage_name
+    document.content_type = version.content_type
+    document.size_bytes = version.size_bytes
+    document.sha256 = version.sha256
+    db.add(DocumentVersion(
+        document_id=document.id,
+        version_number=next_version,
+        original_filename=version.original_filename,
+        storage_name=version.storage_name,
+        content_type=version.content_type,
+        size_bytes=version.size_bytes,
+        sha256=version.sha256,
+        uploaded_by_id=user.id,
+    ))
+    _audit(db, user.id, "version_restore", "success", document.id,
+           restored_version=version.version_number, new_version=next_version)
+    db.commit()
+    db.refresh(document)
     return _response(document)
 
 
@@ -455,10 +657,14 @@ def delete_document(
     user: User = Depends(get_current_user),
 ) -> Response:
     document = _require_owner(db, document_id, user, "delete")
-    storage_name = document.storage_name
+    versions = db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document.id)).all()
+    storage_names = {document.storage_name, *(version.storage_name for version in versions)}
+    for version in versions:
+        db.delete(version)
     document_id = document.id
     db.delete(document)
     _audit(db, user.id, "delete", "success", document_id)
     db.commit()
-    remove_stored_file(storage_name)
+    for storage_name in storage_names:
+        remove_stored_file(storage_name)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
