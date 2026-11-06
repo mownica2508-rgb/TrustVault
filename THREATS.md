@@ -1,6 +1,6 @@
 # TrustVault threat model
 
-This threat model tracks the account, document, sharing, and audit features implemented so far. The admin activity dashboard and automated security tests are planned for Day 4.
+This threat model tracks the account, document, sharing, audit, and admin activity features implemented so far.
 
 ## Assets
 
@@ -39,9 +39,21 @@ This threat model tracks the account, document, sharing, and audit features impl
 - Every document detail, preview, download, metadata change, file replacement, and deletion route checks server-side ownership or a current grant. Read permits viewing/downloading; Edit also permits changes; only the owner can share, revoke, or delete. Admin status does not grant document content access.
 - Permission state is queried from MySQL on each operation. No long-lived permission cache or signed share URL is used, so revocation blocks the next request.
 - Owners receive a uniform not-found response when attempting another user's document ID. Denied document actions are committed to the audit table.
-- Successful uploads, previews/downloads, metadata/file changes, deletion, and permission changes are recorded. The audit table has no update/delete API, and deletion events do not depend on the document row remaining present.
-- Direct database writers can still alter audit records. Production needs a restricted audit-writer credential and monitoring/backup controls; the current local development account has broad migration privileges.
-- The admin activity view and automated IDOR/revocation tests are not implemented until Day 4.
+- New audit events include an HMAC over canonical event fields and the previous event hash; a locked singleton chain-head row is updated in the same transaction. The admin-only verification endpoint detects event edits, deletion/reordering, and checkpoint mismatch when the HMAC secret remains outside MySQL.
+- Events present before migration `0004` remain explicitly reported as legacy/unsealed and are not retroactively claimed as verified.
+- Migration `0004` records the exact legacy audit-row cutoff and count. The runtime DB role must not update those checkpoint fields; verification flags unsealed rows beyond the cutoff or a changed legacy count.
+- HMAC is tamper-evident, not a defense against a compromised application host that can read the secret. Production separates the DDL-capable migration account from the runtime account; the runtime account receives no `UPDATE` or `DELETE` on `audit_events`, and can update only the rolling head columns in `audit_chain_state`. The migration-stamped legacy cutoff/count fields are immutable to the runtime account. Keep signing secrets outside MySQL and retain off-database signed checkpoints or immutable backups to detect full-ledger deletion by a database administrator.
+- Each uploaded/replaced/restored file receives a numbered immutable snapshot. Downloads and restores compare bytes with the recorded SHA-256 before serving or restoring.
+- Permission grants can expire. Every access and listing query checks current expiration and revocation state; no scheduled cleanup job or stale cache is needed to end access.
+- Admin account disablement immediately blocks future requests because auth reloads the active account each time. It revokes grants the account received and grants it issued; re-enabling does not restore permissions. The last active administrator and the current admin cannot be disabled.
+
+## Day 4 admin and verification controls
+
+- Admin overview and activity APIs require the global admin role on the server. A regular member's attempt is denied and logged; an admin still cannot read document contents without an explicit document relationship.
+- The admin page renders text with DOM `textContent`, paginates audit activity, and filters by actor/document search, action, outcome, and dates. It contains no privileged data without API access.
+- Pytest uses an isolated in-memory SQLite database and verifies IDOR rejection, Read/Edit boundaries, revocation, admin role enforcement, admin/content separation, and signup role escalation.
+- The audit UI is read-only. Audit rows have no edit/delete API, but a database administrator or compromised DB credential can still alter them; production should separate migration, application, and audit database privileges.
+- The admin overview alerts when one account causes at least five denied events in one hour. This is a basic signal, not a full intrusion-detection system; alert delivery, source-IP analysis, and rate limiting remain future work.
 
 ## Known risks and planned mitigations
 
@@ -55,12 +67,18 @@ This threat model tracks the account, document, sharing, and audit features impl
 | SQL injection | Use SQLAlchemy parameterized queries. Avoid raw SQL built from request strings. |
 | Email enumeration | Login response is generic. Registration currently returns a duplicate-account conflict, which can disclose account existence; assess a uniform registration response or email verification before deployment. |
 | Cross-site scripting | UI renders API values with `textContent`; add a restrictive Content Security Policy when deployment headers are configured. |
-| Insecure file exposure / IDOR | Routes check current ownership/grants for metadata and file operations, use random private storage names, and return 404 for users without access. Automated IDOR/revocation tests are planned for Day 4. |
-| Audit tampering | Successful document/permission actions and authorization denials are recorded; no user-facing update/delete route exists. Direct DB writers can still alter records until deployment uses a restricted audit-writer credential. |
+| Insecure file exposure / IDOR | Routes check current ownership/grants for metadata and file operations, use random private storage names, and return 404 for users without access. Automated tests cover the main access boundaries and immediate revocation. |
+| Audit tampering | New events are HMAC-chained. A least-privilege runtime account cannot update/delete audit rows; verification also detects changes made by a DB-only writer who lacks the HMAC secret. A DBA can still remove an entire ledger and its checkpoint; use off-database signed checkpoints/immutable backups. |
+| Audit event edits or deletion | New events are HMAC-chained to a secret kept outside MySQL; the admin verification endpoint flags tampering. Pre-upgrade events are unsealed. A privileged host attacker can still erase the database and chain state; retain off-database signed checkpoints or immutable backups in production. |
+| Audit key rotation | Changing `AUDIT_HMAC_KEY` makes earlier HMACs fail verification. Keep the key stable and backed up separately; key rotation needs a versioned keyring/migration plan before use. |
+| Expired permission still works | Every document lookup and shared-document search filters grants by current expiry and revocation state. Tests cover expiration without relying on a cleanup job. |
+| Departing user retains access | Admin account disablement rejects the next authenticated request and revokes grants where the person was recipient or grantor. Re-enable does not recreate grants. |
+| Stored file changed outside the app | The app hashes file bytes on upload and verifies SHA-256 on download, version download, and restore. A mismatch is denied and audited. |
+| Accidental overwrite | Replacements and restores create numbered snapshots. Restoring a prior file creates a new version and leaves newer snapshots recoverable. |
 
 ## Security assumptions
 
 - The local development machine and MySQL service are trusted and access-controlled.
 - HTTPS will be enabled before deployment outside localhost.
 - Deployment secrets will be supplied by the hosting environment, not packaged into the repository.
-- This development build still needs Day 4 automated security tests, admin activity UI, and a deployment review before it should be treated as production-ready.
+- This development build still needs production database privilege separation, HTTPS, persistent private storage, off-database audit checkpoints, and deployment-specific configuration before it should be treated as production-ready.
