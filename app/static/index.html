@@ -158,7 +158,8 @@
     <form id="share-form">
       <label>Registered person's email<input id="share-email" type="email" autocomplete="email" required maxlength="320" placeholder="person@example.com"></label>
       <label>Permission<select id="share-access"><option value="read">Read</option><option value="edit">Edit (read + change details or file)</option></select></label>
-      <label>Access ends <span class="optional-label">OPTIONAL</span><input id="share-expires-at" type="datetime-local"><small class="dialog-help">Leave blank for access that stays active until revoked.</small></label>
+      <label>Access duration<select id="share-expiry-mode"><option value="until-revoked">Until I revoke</option><option value="expires">Set an expiration date</option></select></label>
+      <div id="share-expiry-fields" class="hidden"><label>Access ends<input id="share-expires-at" type="datetime-local"><small class="dialog-help">Choose the date and time when access should stop.</small></label></div>
       <button id="share-submit" class="primary" type="submit">Grant access</button>
     </form>
     <p id="share-message" class="message" role="status" aria-live="polite"></p>
