@@ -48,3 +48,4 @@ def decode_access_token(token: str) -> dict:
         algorithms=[settings.jwt_algorithm],
         options={"require": ["sub", "exp", "iat", "type"]},
     )
+
