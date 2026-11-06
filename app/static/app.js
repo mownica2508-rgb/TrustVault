@@ -17,6 +17,9 @@ const previewFrame = document.querySelector('#preview-frame');
 const shareDialog = document.querySelector('#share-dialog');
 const versionsDialog = document.querySelector('#versions-dialog');
 const shareMessage = document.querySelector('#share-message');
+const shareExpiryMode = document.querySelector('#share-expiry-mode');
+const shareExpiryFields = document.querySelector('#share-expiry-fields');
+const shareExpiryInput = document.querySelector('#share-expires-at');
 const uploadFile = document.querySelector('#upload-file');
 const tokenKey = 'trustvault_access_token';
 
@@ -37,6 +40,13 @@ function showDocumentMessage(text, success = false) {
   target.textContent = text;
   target.classList.toggle('success', success);
   target.classList.toggle('visible', Boolean(text));
+}
+
+function syncShareExpiryFields() {
+  const dateBased = shareExpiryMode.value === 'expires';
+  shareExpiryFields.classList.toggle('hidden', !dateBased);
+  shareExpiryInput.required = dateBased;
+  if (!dateBased) shareExpiryInput.value = '';
 }
 
 function setMode(nextMode) {
@@ -116,9 +126,10 @@ async function openShareDialog(item) {
   document.querySelector('#share-document-name').textContent = `Choose a registered person to share “${item.title}” with.`;
   document.querySelector('#share-email').value = '';
   document.querySelector('#share-access').value = 'read';
-  const expiryInput = document.querySelector('#share-expires-at');
-  expiryInput.value = '';
-  expiryInput.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  shareExpiryMode.value = 'until-revoked';
+  shareExpiryInput.value = '';
+  shareExpiryInput.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  syncShareExpiryFields();
   shareMessage.textContent = '';
   shareMessage.classList.remove('success');
   shareDialog.showModal();
@@ -699,8 +710,8 @@ document.querySelector('#share-form').addEventListener('submit', async event => 
       body: JSON.stringify({
         email: document.querySelector('#share-email').value,
         access_level: document.querySelector('#share-access').value,
-        expires_at: document.querySelector('#share-expires-at').value
-          ? new Date(document.querySelector('#share-expires-at').value).toISOString()
+        expires_at: shareExpiryMode.value === 'expires' && shareExpiryInput.value
+          ? new Date(shareExpiryInput.value).toISOString()
           : null,
       }),
     });
@@ -715,6 +726,7 @@ document.querySelector('#share-form').addEventListener('submit', async event => 
     button.disabled = false;
   }
 });
+shareExpiryMode.addEventListener('change', syncShareExpiryFields);
 document.querySelector('#close-share').addEventListener('click', () => shareDialog.close());
 document.querySelector('#close-versions').addEventListener('click', () => versionsDialog.close());
 document.querySelector('#close-preview').addEventListener('click', () => previewDialog.close());
