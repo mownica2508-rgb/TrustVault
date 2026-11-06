@@ -668,3 +668,5 @@ def delete_document(
     for storage_name in storage_names:
         remove_stored_file(storage_name)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
