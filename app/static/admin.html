@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1424">
+  <title>TrustVault · Admin activity</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="admin-body">
+  <div class="admin-glow admin-glow-one"></div><div class="admin-glow admin-glow-two"></div>
+  <main class="admin-shell">
+    <header class="admin-topbar">
+      <a class="admin-brand" href="/"><span class="brand-mark"><svg class="trustvault-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path class="fortress-mark" fill-rule="evenodd" d="M24 3 30 9h7v5l6 3-4 18-15 10L9 35 5 17l6-3V9h7l6-6Zm0 14a5 5 0 0 0-3 9v9h6v-9a5 5 0 0 0-3-9Z"/></svg></span><span>TrustVault<small>SECURITY CONSOLE</small></span></a>
+      <div class="admin-user"><span class="live-dot"></span><span id="admin-identity">Checking administrator session…</span><a href="/">Workspace</a><button id="admin-logout" type="button">Sign out</button></div>
+    </header>
+
+    <section class="admin-hero">
+      <div><p class="admin-kicker">ADMINISTRATOR / ACTIVITY CENTER</p><h1>Good day, <span id="admin-first-name">Admin</span>.</h1><p>Review what is happening across TrustVault and spot access problems early.</p></div>
+      <button id="refresh-dashboard" class="refresh-button" type="button"><span aria-hidden="true">↻</span> Refresh activity</button>
+    </section>
+
+    <div id="admin-alert" class="admin-alert" role="status" aria-live="polite"></div>
+
+    <section class="metric-grid" aria-label="Platform summary">
+      <article class="metric-card"><div class="metric-icon icon-users">◎</div><p>User accounts</p><strong id="metric-users">—</strong><small>Members and administrators</small></article>
+      <article class="metric-card"><div class="metric-icon icon-files">▤</div><p>Private documents</p><strong id="metric-documents">—</strong><small>Stored in member vaults</small></article>
+      <article class="metric-card"><div class="metric-icon icon-shares">↗</div><p>Active shares</p><strong id="metric-shares">—</strong><small>Live Read and Edit grants</small></article>
+      <article class="metric-card"><div class="metric-icon icon-events">⌁</div><p>Events · 7 days</p><strong id="metric-events">—</strong><small>Recorded activity</small></article>
+      <article class="metric-card metric-risk"><div class="metric-icon icon-denied">!</div><p>Denied · 7 days</p><strong id="metric-denied">—</strong><small>Blocked access attempts</small></article>
+    </section>
+
+    <section class="admin-content-grid">
+      <div class="admin-main-column">
+        <section class="panel trend-panel">
+          <div class="panel-heading"><div><p class="admin-kicker">SIGNALS</p><h2>Activity over time</h2></div><span class="range-label">LAST 7 DAYS</span></div>
+          <div id="activity-chart" class="activity-chart" aria-label="Daily audit event totals"></div>
+        </section>
+
+        <section class="panel activity-panel">
+          <div class="panel-heading activity-heading"><div><p class="admin-kicker">AUDIT TRAIL</p><h2>Latest events</h2><p class="panel-subtitle">Document and permission actions recorded by the server.</p></div><span id="result-count" class="result-count">Loading…</span></div>
+          <form id="activity-filters" class="activity-filters">
+            <label class="filter-search"><span aria-hidden="true">⌕</span><input id="activity-search" type="search" placeholder="Search person or document…" maxlength="320"></label>
+            <label><span class="sr-only">Action</span><select id="activity-action"><option value="">All actions</option><option value="upload">Upload</option><option value="view">Preview</option><option value="download">Download</option><option value="metadata_read">Open details</option><option value="metadata_update">Edit details</option><option value="file_replace">Replace file</option><option value="version_list">List versions</option><option value="version_download">Download version</option><option value="version_restore">Restore version</option><option value="delete">Delete</option><option value="permission_granted">Grant access</option><option value="permission_updated">Change access</option><option value="permission_revoked">Revoke access</option><option value="account_disabled">Disable account</option><option value="account_enabled">Enable account</option><option value="grant_permission">Share attempt</option><option value="admin_access">Admin page attempt</option></select></label>
+            <label><span class="sr-only">Result</span><select id="activity-outcome"><option value="">All results</option><option value="success">Allowed</option><option value="denied">Denied</option></select></label>
+            <label><span class="sr-only">From date</span><input id="activity-from" type="date" aria-label="From date"></label>
+            <label><span class="sr-only">To date</span><input id="activity-to" type="date" aria-label="To date"></label>
+            <button class="filter-button" type="submit">Filter</button>
+            <button id="clear-activity-filters" class="clear-button" type="button">Clear</button>
+          </form>
+          <div class="activity-table-wrap">
+            <table class="activity-table">
+              <thead><tr><th>Activity</th><th>Person</th><th>Document</th><th>Result</th><th>When</th><th></th></tr></thead>
+              <tbody id="activity-rows"><tr><td colspan="6" class="activity-empty">Loading the audit trail…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pagination"><span id="page-label">Page 1</span><div><button id="previous-page" type="button" disabled>← Previous</button><button id="next-page" type="button" disabled>Next →</button></div></div>
+        </section>
+      </div>
+
+      <aside class="admin-side-column">
+        <section class="panel alert-panel"><div class="panel-heading"><div><p class="admin-kicker">WATCHLIST</p><h2>Security alerts</h2></div><span class="pulse-icon">!</span></div><div id="security-alerts" class="security-alert-list"><p>Checking for unusual denied-request activity…</p></div></section>
+        <section class="panel posture-panel"><div class="panel-heading"><div><p class="admin-kicker">SECURITY PULSE</p><h2>Access checks</h2></div><span class="pulse-icon">✳</span></div><div class="posture-stat"><strong id="pulse-denied">—</strong><span>denied requests this week</span></div><p class="posture-copy">TrustVault checks access on the server each time a document is opened, downloaded, edited, or shared.</p><div class="posture-rule"><span></span><div><strong>Revocation is live</strong><small>Removed grants no longer pass the next access check.</small></div></div><div class="posture-rule"><span></span><div><strong id="audit-integrity-title">Audit chain is checking</strong><small id="audit-integrity-detail">Verification is administrator-only.</small></div></div></section>
+        <section class="panel legend-panel"><p class="admin-kicker">HOW TO READ THIS</p><h2>Event results</h2><div class="legend-row"><span class="result-pill allowed">ALLOWED</span><p>The requested action passed its permission check.</p></div><div class="legend-row"><span class="result-pill blocked">DENIED</span><p>The server rejected a request or upload.</p></div><p class="legend-note">The log contains document metadata and activity, never file contents.</p></section>
+      </aside>
+    </section>
+    <section class="panel user-management-panel">
+      <div class="panel-heading activity-heading"><div><p class="admin-kicker">ACCOUNT CONTROL</p><h2>Member accounts</h2><p class="panel-subtitle">Disabling an account blocks its sessions and revokes its incoming and outgoing shares.</p></div></div>
+      <form id="users-filter" class="activity-filters"><label class="filter-search"><span aria-hidden="true">⌕</span><input id="users-search" type="search" placeholder="Search by name or email…" maxlength="320"></label><button class="filter-button" type="submit">Search</button><button id="clear-users-search" class="clear-button" type="button">Clear</button></form>
+      <div class="activity-table-wrap"><table class="activity-table"><thead><tr><th>Account</th><th>Role</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="user-rows"><tr><td colspan="5" class="activity-empty">Loading accounts…</td></tr></tbody></table></div>
+    </section>
+    <footer class="admin-footer">TrustVault Security Console <span>·</span> Activity is recorded by the application</footer>
+  </main>
+  <script src="/static/admin.js" defer></script>
+</body>
+</html>
