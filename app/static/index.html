@@ -3,90 +3,177 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1424">
   <title>TrustVault — Private documents</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/workspace.css">
 </head>
-<body>
-  <main class="shell">
-    <section class="intro">
-      <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
-      <h1>TrustVault</h1>
-      <p class="lede">Keep important files organized in a private workspace.</p>
-      <div class="security-note"><span class="dot"></span> Files stay private and every file request is checked by the server.</div>
-    </section>
-    <section class="card" aria-labelledby="form-title">
-      <div class="tabs" role="tablist" aria-label="Account action">
-        <button id="login-tab" class="tab active" type="button">Sign in</button>
-        <button id="register-tab" class="tab" type="button">Create account</button>
+<body class="workspace-body">
+  <section id="auth-view" class="auth-view">
+    <div class="auth-story">
+      <a class="workspace-brand" href="/"><span class="workspace-mark"><svg class="trustvault-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path class="fortress-mark" fill-rule="evenodd" d="M24 3 30 9h7v5l6 3-4 18-15 10L9 35 5 17l6-3V9h7l6-6Zm0 14a5 5 0 0 0-3 9v9h6v-9a5 5 0 0 0-3-9Z"/></svg></span><span>TrustVault<small>PRIVATE DOCUMENTS</small></span></a>
+      <div class="auth-story-copy">
+        <p class="workspace-kicker">A QUIETER PLACE FOR IMPORTANT FILES</p>
+        <h1>Your documents,<br><span>under your control.</span></h1>
+        <p>Keep your files organized, share them with the right people, and know who can access them.</p>
       </div>
-      <h2 id="form-title">Welcome back</h2>
-      <p id="form-hint" class="muted">Sign in to continue to your workspace.</p>
-      <form id="auth-form">
-        <label id="name-wrap" class="hidden">Full name<input id="full-name" name="full_name" autocomplete="name" maxlength="120"></label>
-        <label>Email address<input id="email" name="email" type="email" autocomplete="email" required maxlength="320" placeholder="you@example.com"></label>
-        <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128" placeholder="At least 12 characters"></label>
-        <button id="submit-button" class="primary" type="submit">Sign in</button>
-      </form>
-      <div id="message" class="message" role="status" aria-live="polite"></div>
-      <div id="account-panel" class="account-panel hidden">
-        <p class="eyebrow">SIGNED IN</p><p id="account-name" class="account-name"></p><p id="account-email" class="muted"></p>
-        <button id="logout-button" class="secondary" type="button">Sign out</button>
+      <div class="auth-assurance"><span class="assurance-icon">✓</span><span><strong>Private by default</strong><small>Every document request is checked by the server.</small></span></div>
+      <div class="auth-orbit orbit-one"></div><div class="auth-orbit orbit-two"></div>
+      <div class="vault-flow" aria-hidden="true">
+        <div class="flow-node flow-source"><span class="flow-globe">◎</span><small>YOUR FILE</small></div>
+        <span class="flow-link"><i></i></span>
+        <div class="flow-capture"><span>●</span><small>SECURE</small></div>
+        <span class="flow-link flow-link-last"><i></i></span>
+        <div class="flow-node flow-target"><span class="flow-document">▤</span><small>VAULT</small></div>
       </div>
-      <section id="documents-panel" class="documents-panel hidden" aria-labelledby="documents-heading">
-        <div class="section-heading"><div><p class="eyebrow">YOUR PRIVATE LIBRARY</p><h3 id="documents-heading">Documents</h3></div><span id="document-count" class="count-pill">0 files</span></div>
-        <form id="upload-form" class="upload-form">
-          <label>Document title<input id="upload-title" name="title" maxlength="160" placeholder="Leave blank to use the filename"></label>
-          <label>Category<input id="upload-category" name="category" maxlength="80" placeholder="For example, Contracts"></label>
-          <label class="file-label">Choose a file<input id="upload-file" name="file" type="file" accept=".pdf,.docx,.txt" required></label>
-          <p class="field-note">PDF, DOCX, or UTF-8 TXT · maximum 10 MB</p>
-          <button id="upload-button" class="primary" type="submit">Upload document</button>
-        </form>
-        <form id="search-form" class="search-form">
-          <label>Name<input id="filter-name" type="search" placeholder="Search title or filename"></label>
-          <label>Owner<input id="filter-owner" type="search" placeholder="Name or email"></label>
-          <label>Category<input id="filter-category" type="search" placeholder="Any category"></label>
-          <label>From<input id="filter-from" type="date"></label>
-          <label>To<input id="filter-to" type="date"></label>
-          <button class="secondary" type="submit">Search</button>
-          <button id="clear-search" class="text-button" type="button">Clear filters</button>
-        </form>
-        <div id="document-message" class="message" role="status" aria-live="polite"></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Document</th><th>Category</th><th>Uploaded</th><th>Size</th><th>Actions</th></tr></thead>
-            <tbody id="document-rows"><tr><td colspan="5" class="empty-state">No documents yet. Upload one to get started.</td></tr></tbody>
-          </table>
+    </div>
+    <div class="auth-side">
+      <div class="auth-card">
+        <p class="workspace-kicker">WELCOME TO YOUR VAULT</p>
+        <div class="tabs" role="tablist" aria-label="Account action">
+          <button id="login-tab" class="tab active" type="button">Sign in</button>
+          <button id="register-tab" class="tab" type="button">Create account</button>
         </div>
-        <section class="shared-section" aria-labelledby="shared-heading">
-          <div class="section-heading"><div><p class="eyebrow">DOCUMENTS SHARED WITH YOU</p><h3 id="shared-heading">Shared with me</h3></div><span id="shared-count" class="count-pill">0 files</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Document</th><th>Owner</th><th>Access</th><th>Uploaded</th><th>Actions</th></tr></thead>
-              <tbody id="shared-rows"><tr><td colspan="5" class="empty-state">No documents have been shared with you.</td></tr></tbody>
-            </table>
-          </div>
+        <h2 id="form-title">Welcome back</h2>
+        <p id="form-hint" class="auth-subtitle">Sign in to continue to your workspace.</p>
+        <form id="auth-form">
+          <label id="name-wrap" class="hidden">Full name<input id="full-name" name="full_name" autocomplete="name" maxlength="120" placeholder="Your name"></label>
+          <label>Email address<input id="email" name="email" type="email" autocomplete="email" required maxlength="320" placeholder="you@example.com"></label>
+          <label>Password<input id="password" name="password" type="password" autocomplete="current-password" required minlength="12" maxlength="128" placeholder="At least 12 characters"></label>
+          <button id="submit-button" class="auth-submit" type="submit">Sign in</button>
+        </form>
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+        <p class="auth-footnote"><span>⌑</span> Your files stay private until you choose to share them.</p>
+      </div>
+      <p class="auth-copyright">TrustVault <span>·</span> Secure document workspace</p>
+    </div>
+  </section>
+
+  <div id="documents-panel" class="workspace-app hidden">
+    <aside class="workspace-sidebar">
+      <a class="workspace-brand sidebar-brand" href="/"><span class="workspace-mark"><svg class="trustvault-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path class="fortress-mark" fill-rule="evenodd" d="M24 3 30 9h7v5l6 3-4 18-15 10L9 35 5 17l6-3V9h7l6-6Zm0 14a5 5 0 0 0-3 9v9h6v-9a5 5 0 0 0-3-9Z"/></svg></span><span>TrustVault<small>YOUR PRIVATE SPACE</small></span></a>
+      <p class="nav-caption">WORKSPACE</p>
+      <nav class="workspace-nav" aria-label="Workspace navigation">
+        <button class="nav-item active" type="button" data-workspace-view="overview"><span class="nav-icon">⌂</span><span>Overview</span></button>
+        <button class="nav-item" type="button" data-workspace-view="documents"><span class="nav-icon">▤</span><span>My documents</span><span id="nav-document-count" class="nav-count">0</span></button>
+        <button class="nav-item" type="button" data-workspace-view="sharing"><span class="nav-icon">⇧</span><span>Shared by me</span><span id="nav-sharing-count" class="nav-count">0</span></button>
+        <button class="nav-item" type="button" data-workspace-view="shared"><span class="nav-icon">↗</span><span>Shared with me</span><span id="nav-shared-count" class="nav-count">0</span></button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-security"><span class="sidebar-shield">✓</span><div><strong>Your vault is private</strong><small>Access is checked on every request.</small></div></div>
+      <div id="account-panel" class="sidebar-account">
+        <div class="avatar" id="account-avatar">U</div>
+        <div class="sidebar-account-copy"><strong id="account-name">Your account</strong><small id="account-email"></small></div>
+        <button id="logout-button" class="signout-button" type="button" title="Sign out" aria-label="Sign out">↗</button>
+      </div>
+      <a id="admin-link" class="admin-launch hidden" href="/admin">Admin activity <span aria-hidden="true">↗</span></a>
+    </aside>
+
+    <main class="workspace-main">
+      <header class="workspace-topbar">
+        <div><span class="topbar-label">MY WORKSPACE</span><span class="topbar-divider">/</span><span id="breadcrumb-current">Overview</span></div>
+        <div class="topbar-right"><span class="topbar-status"><i></i> Private workspace</span><a id="admin-top-link" class="topbar-admin-link hidden" href="/admin">Admin</a><button id="mobile-logout" class="mobile-signout" type="button" aria-label="Sign out" title="Sign out">↗</button><button id="topbar-upload" class="topbar-upload" type="button"><span>＋</span> Add a document</button></div>
+      </header>
+      <div id="workspace-message" class="workspace-toast" role="status" aria-live="polite"></div>
+
+      <section id="overview-view" class="page-view">
+        <div class="overview-hero">
+          <div><p class="workspace-kicker">YOUR FILES, AT A GLANCE</p><h1>Welcome back, <span id="welcome-name">there</span>.</h1><p>Everything you own and everything shared with you, in one calm place.</p></div>
+          <div class="hero-art" aria-hidden="true"><div class="hero-art-card art-card-back"></div><div class="hero-art-card art-card-front"><span>▤</span><i></i><i></i><i></i></div><div class="hero-art-orbit"></div><div class="hero-art-flow"><span class="hero-flow-step"><b>▤</b><small>FILE</small></span><span class="hero-flow-link"><i></i></span><span class="hero-flow-step hero-flow-secure"><b>✓</b><small>CHECK</small></span><span class="hero-flow-link hero-flow-link-last"><i></i></span><span class="hero-flow-step hero-flow-vault"><b>⌑</b><small>VAULT</small></span></div></div>
+        </div>
+
+        <div class="workspace-stat-grid">
+          <article class="workspace-stat"><span class="stat-icon stat-icon-green">▤</span><div><small>MY DOCUMENTS</small><strong id="overview-document-count">0</strong><span>files in your library</span></div><button type="button" data-open-view="documents" aria-label="Open my documents">↗</button></article>
+          <article class="workspace-stat"><span class="stat-icon stat-icon-blue">↗</span><div><small>SHARED WITH ME</small><strong id="overview-shared-count">0</strong><span>files shared by others</span></div><button type="button" data-open-view="shared" aria-label="Open shared documents">↗</button></article>
+          <article class="workspace-stat"><span class="stat-icon stat-icon-gold">⇧</span><div><small>SHARED BY YOU</small><strong id="overview-owned-share-count">0</strong><span>active access grants</span></div><button type="button" data-open-view="sharing" aria-label="Review documents you have shared">↗</button></article>
+        </div>
+
+        <div class="overview-section-heading"><div><p class="workspace-kicker">PICK UP WHERE YOU LEFT OFF</p><h2>Recent documents</h2></div><button type="button" class="inline-link" data-open-view="documents">View my library <span>→</span></button></div>
+        <div id="overview-recent" class="recent-grid"></div>
+        <div id="overview-empty" class="overview-empty hidden"><span class="empty-illustration">▤</span><strong>Your library starts here</strong><p>Add your first document. It will be visible only to you until you share it.</p><button type="button" class="empty-cta" data-open-view="documents">Add your first document <span>→</span></button></div>
+      </section>
+
+      <section id="my-documents-view" class="page-view hidden">
+        <div class="page-heading-row"><div><p class="workspace-kicker">YOUR PRIVATE LIBRARY</p><h1>My documents</h1><p>Upload, organize, and manage the files you own.</p></div><button class="page-primary-action" type="button" id="page-upload"><span>＋</span> Upload document</button></div>
+        <section class="upload-card" aria-labelledby="upload-heading">
+          <div class="upload-card-heading"><span class="upload-icon">↑</span><div><h2 id="upload-heading">Add a document</h2><p>Choose a file and give it a name that is easy to find later.</p></div><span class="private-tag"><i></i> PRIVATE</span></div>
+          <form id="upload-form" class="upload-form">
+            <div class="upload-fields">
+              <label>Document title <span class="optional-label">OPTIONAL</span><input id="upload-title" name="title" maxlength="160" placeholder="For example, Rental agreement"></label>
+              <label>Category <span class="optional-label">OPTIONAL</span><input id="upload-category" name="category" maxlength="80" placeholder="For example, Personal"></label>
+            </div>
+            <label class="file-drop" for="upload-file"><span class="file-drop-icon">⇧</span><span><strong id="selected-file-name">Choose a file to upload</strong><small>PDF, DOCX, or UTF-8 TXT · maximum 10 MB</small></span><span class="file-browse">Browse files</span><input id="upload-file" name="file" type="file" accept=".pdf,.docx,.txt" required></label>
+            <div class="upload-submit-row"><span class="upload-privacy-note"><span>✓</span> Stored privately and checked by TrustVault</span><button id="upload-button" class="page-primary-action" type="submit">Upload document <span>→</span></button></div>
+          </form>
+        </section>
+        <section class="library-section">
+          <div class="library-heading"><div><p class="workspace-kicker">YOUR COLLECTION</p><h2>All documents <span id="document-count" class="section-count">0</span></h2></div><span class="library-note">Only you can see these files unless shared.</span></div>
+          <form id="search-form" class="library-filters">
+            <label class="library-search"><span>⌕</span><input id="filter-name" type="search" placeholder="Find a document by name…"></label>
+            <label><span class="sr-only">Filter by owner</span><input id="filter-owner" type="search" placeholder="Owner"></label>
+            <label><span class="sr-only">Filter by category</span><input id="filter-category" type="search" placeholder="Category"></label>
+            <label><span class="sr-only">From date</span><input id="filter-from" type="date" aria-label="From date"></label>
+            <label><span class="sr-only">To date</span><input id="filter-to" type="date" aria-label="To date"></label>
+            <button class="filter-submit" type="submit">Search</button>
+            <button id="clear-search" class="filter-clear" type="button">Clear</button>
+          </form>
+          <div class="workspace-table-wrap"><table class="workspace-table"><thead><tr><th>DOCUMENT</th><th>CATEGORY</th><th>ADDED</th><th>SIZE</th><th>ACTIONS</th></tr></thead><tbody id="document-rows"><tr><td colspan="5" class="empty-state">Your documents will appear here.</td></tr></tbody></table></div>
         </section>
       </section>
-      <p class="footnote">Only people with an active document permission can open a shared file.</p>
-    </section>
-    <dialog id="share-dialog" class="share-dialog" aria-labelledby="share-title">
-      <div class="preview-heading"><strong id="share-title">Share document</strong><button id="close-share" class="secondary" type="button">Close</button></div>
-      <p id="share-document-name" class="muted"></p>
-      <form id="share-form">
-        <label>Registered person's email<input id="share-email" type="email" autocomplete="email" required maxlength="320" placeholder="person@example.com"></label>
-        <label>Permission<select id="share-access"><option value="read">Read</option><option value="edit">Edit (read + change details or file)</option></select></label>
-        <button id="share-submit" class="primary" type="submit">Grant access</button>
-      </form>
-      <p id="share-message" class="message" role="status" aria-live="polite"></p>
-      <h3 class="share-list-title">People with access</h3>
-      <div id="share-grants" class="share-grants"></div>
-    </dialog>
-    <dialog id="preview-dialog" class="preview-dialog" aria-label="Document preview">
-      <div class="preview-heading"><strong id="preview-title">Document preview</strong><button id="close-preview" class="secondary" type="button">Close</button></div>
-      <iframe id="preview-frame" title="Private document preview" sandbox></iframe>
-    </dialog>
-    <footer>TrustVault <span>·</span> Private by design</footer>
-  </main>
+
+      <section id="sharing-status-view" class="page-view hidden">
+        <div class="page-heading-row"><div><p class="workspace-kicker">YOUR ACCESS SETTINGS</p><h1>Shared by me</h1><p>See which of your documents are private and who can access the shared ones.</p></div><span class="shared-security-badge"><span>✓</span> Only you can manage these grants</span></div>
+        <div class="shared-explainer"><span class="shared-explainer-icon">⇧</span><div><strong>One clear view of every document you own.</strong><p>Private means no one else has access. Shared shows the named people and their Read or Edit level. Open Manage access to change a permission or revoke it.</p></div></div>
+        <section class="library-section shared-library-section">
+          <div class="library-heading"><div><p class="workspace-kicker">OWNERSHIP & ACCESS</p><h2>My documents <span id="sharing-document-count" class="section-count">0</span></h2></div><span class="library-note">Revoking access takes effect on the next request.</span></div>
+          <div id="sharing-table-wrap" class="workspace-table-wrap"><table class="workspace-table sharing-status-table"><thead><tr><th>DOCUMENT</th><th>STATUS</th><th>SHARED WITH</th><th>UPDATED</th><th>ACTIONS</th></tr></thead><tbody id="sharing-status-rows"><tr><td colspan="5" class="empty-state">Your sharing status will appear here.</td></tr></tbody></table></div>
+          <div id="sharing-empty" class="overview-empty hidden"><span class="empty-illustration">▤</span><strong>No documents to share yet</strong><p>Upload a document first. It will appear here as private until you grant someone access.</p><button type="button" class="empty-cta" data-open-view="documents">Go to My Documents <span>→</span></button></div>
+        </section>
+      </section>
+
+      <section id="shared-documents-view" class="page-view hidden">
+        <div class="page-heading-row"><div><p class="workspace-kicker">DOCUMENTS FROM YOUR PEOPLE</p><h1>Shared with me</h1><p>Files other members have shared with your account.</p></div><span class="shared-security-badge"><span>✓</span> Your access is checked every time</span></div>
+        <div class="shared-explainer"><span class="shared-explainer-icon">↗</span><div><strong>Your access follows the owner's settings.</strong><p>Read lets you preview and download. Edit also lets you update details or replace the file. The owner can revoke access at any time.</p></div></div>
+        <section class="library-section shared-library-section">
+          <div class="library-heading"><div><p class="workspace-kicker">YOUR SHARED LIBRARY</p><h2>Available to you <span id="shared-count" class="section-count">0</span></h2></div><span class="library-note">Files remain in their owner's private vault.</span></div>
+          <form id="shared-search-form" class="library-filters shared-filters">
+            <label class="library-search"><span>⌕</span><input id="shared-filter-name" type="search" placeholder="Find a document by name…"></label>
+            <label><span class="sr-only">Filter by owner</span><input id="shared-filter-owner" type="search" placeholder="Owner name or email"></label>
+            <label><span class="sr-only">Filter by category</span><input id="shared-filter-category" type="search" placeholder="Category"></label>
+            <label><span class="sr-only">From date</span><input id="shared-filter-from" type="date" aria-label="From date"></label>
+            <label><span class="sr-only">To date</span><input id="shared-filter-to" type="date" aria-label="To date"></label>
+            <button class="filter-submit" type="submit">Search</button>
+            <button id="clear-shared-search" class="filter-clear" type="button">Clear</button>
+          </form>
+          <div id="shared-table-wrap" class="workspace-table-wrap"><table class="workspace-table shared-table"><thead><tr><th>DOCUMENT</th><th>OWNER</th><th>ACCESS</th><th>ADDED</th><th>ACTIONS</th></tr></thead><tbody id="shared-rows"><tr><td colspan="5" class="empty-state">Files shared with you will appear here.</td></tr></tbody></table></div>
+        </section>
+        <div id="shared-empty" class="overview-empty hidden"><span class="empty-illustration">↗</span><strong>No shared documents yet</strong><p>When someone gives your account access to a document, it will show up here.</p></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="share-dialog" class="share-dialog" aria-labelledby="share-title">
+    <div class="preview-heading"><strong id="share-title">Share document</strong><button id="close-share" class="secondary" type="button">Close</button></div>
+    <p id="share-document-name" class="muted"></p>
+    <form id="share-form">
+      <label>Registered person's email<input id="share-email" type="email" autocomplete="email" required maxlength="320" placeholder="person@example.com"></label>
+      <label>Permission<select id="share-access"><option value="read">Read</option><option value="edit">Edit (read + change details or file)</option></select></label>
+      <label>Access ends <span class="optional-label">OPTIONAL</span><input id="share-expires-at" type="datetime-local"><small class="dialog-help">Leave blank for access that stays active until revoked.</small></label>
+      <button id="share-submit" class="primary" type="submit">Grant access</button>
+    </form>
+    <p id="share-message" class="message" role="status" aria-live="polite"></p>
+    <h3 class="share-list-title">People with access</h3>
+    <div id="share-grants" class="share-grants"></div>
+  </dialog>
+  <dialog id="versions-dialog" class="share-dialog versions-dialog" aria-labelledby="versions-title">
+    <div class="preview-heading"><strong id="versions-title">Version history</strong><button id="close-versions" class="secondary" type="button">Close</button></div>
+    <p id="versions-document-name" class="muted"></p>
+    <div id="versions-list" class="version-list"></div>
+  </dialog>
+  <dialog id="preview-dialog" class="preview-dialog" aria-label="Document preview">
+    <div class="preview-heading"><strong id="preview-title">Document preview</strong><button id="close-preview" class="secondary" type="button">Close</button></div>
+    <iframe id="preview-frame" title="Private document preview" sandbox></iframe>
+  </dialog>
   <script src="/static/app.js" defer></script>
 </body>
 </html>
