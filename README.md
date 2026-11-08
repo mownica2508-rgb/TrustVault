@@ -1,49 +1,31 @@
-# 🔐 TrustVault
+# TrustVault — Secure Document Management and Access Control
 
-### Private documents. Deliberate access. Verifiable activity.
+TrustVault is a document management and sharing application built with **FastAPI, SQLAlchemy, MySQL, JWT authentication, and HTML/CSS/JavaScript**. Documents are private by default. The server verifies ownership or an active per-document grant for every document request.
 
-TrustVault is a secure document workspace built with **FastAPI, MySQL, SQLAlchemy, JWT, and HTML/CSS/JavaScript**. Documents stay private until their owner grants a named person access. The server checks permissions on every request and records allowed and denied activity.
+## Capabilities
 
-| Authentication | Storage | Permissions | Evidence |
-|---|---|---|---|
-| Argon2 passwords + short-lived JWTs | Private file directory + SHA-256 checks | Per-document Read/Edit, expiry, immediate revocation | HMAC-linked audit events + security tests |
+| Area | Implementation |
+|---|---|
+| Authentication | Argon2 password hashing, short-lived JWTs, public registration as a regular member |
+| Document management | Private PDF, DOCX, and UTF-8 TXT uploads; search, preview, download, replacement, version history, and restore |
+| Access control | Named per-document Read/Edit grants, optional expiry, immediate revocation, owner-only sharing and deletion |
+| File integrity | Random private storage names and SHA-256 verification before serving files |
+| Audit | HMAC-linked activity records, denied-action logging, administrator activity view, and chain verification |
+| Sharing assistance | Local history-based suggestions; owner approval is required before a grant is created |
+| Administration | User status controls, audit activity filters, denied-access alerts, and integrity status |
+| Testing | Pytest coverage for IDOR attempts, authorization boundaries, revocation, audit integrity, and role escalation |
 
-## What you can do
+The member workspace provides separate Overview, My Documents, Shared by Me, and Shared with Me screens. The administrator activity console is available at `/admin`.
 
-- Create an account and manage documents in a role-aware workspace.
-- Upload, organize, filter, preview, download, replace, and restore PDF, DOCX, and TXT files.
-- Share a document with a registered person using **Read** or **Edit** access, with optional expiry.
-- Review who has access, revoke a grant, and see the change take effect on the next request.
-- View administrator activity, denied access alerts, and audit-chain integrity status.
-- Generate local, history-based sharing suggestions. Suggestions never grant access unless the owner approves them.
+## Architecture and access model
 
-## Demo walkthrough
-
-Use sample documents only. The demo accounts will be listed here after the dedicated accounts are prepared.
-
-1. Sign in as the **Owner** and upload a sample document.
-2. Share it with **Viewer 1** using Read access.
-3. Sign in as Viewer 1 and open the document from **Shared with me**.
-4. Sign in as **Viewer 2**, who has no grant, and confirm the document cannot be opened or downloaded.
-5. Revoke Viewer 1's access as the owner; confirm Viewer 1 is blocked on their next request.
-6. Sign in as the **Administrator** and review the recorded allowed and denied activity.
-
-The automated access-control tests exercise the same boundary without relying on the frontend. See [Security tests](#security-tests).
-
-The member interface separates the workspace overview, owned document library, outgoing shares, and incoming shared documents into dedicated responsive screens. The sign-in, member workspace, and administrator activity console share a dark blue theme. Owners can see which files are private, who has an active grant, and each recipient's Read/Edit level from “Shared by me.”
-
-## Day 1 architecture decisions
-
-- The backend is a modular FastAPI application. Routes, models, schemas, security helpers, and database configuration have separate modules.
-- SQLAlchemy 2.x is used for database access and Alembic owns schema changes. The app does not silently create tables on startup.
-- Passwords are hashed with Argon2. Raw passwords are never written to the database.
-- JWTs are short-lived bearer access tokens. Protected routes validate the token and reload the user from MySQL on each request, so disabled accounts stop working immediately.
-- Public registration always creates a member account. Admin accounts are created through a local operator command, never from a client-supplied role.
-- `admin` is a global account role. Document ownership will be represented by the document's `owner_id`; read/edit access for other users will be document-level grants. This makes the effective owner/viewer/editor relationship specific to each document.
-- The Day 1 browser page stores its short-lived token in `sessionStorage` for the demo flow. Later production deployment should use a carefully configured secure cookie or a dedicated frontend/backend origin with an explicit token lifecycle and CSP.
-- Documents are stored under randomly generated names in `private_storage/`, which is outside the public static directory and excluded from Git. Original filenames are metadata only.
-- The upload allowlist is PDF, DOCX, and UTF-8 TXT, with a 10 MB default limit. The backend checks file structure/content and does not trust the browser's MIME type.
-- Document access is checked against the current owner or active per-document grant on every request. Owners can share with registered accounts. Read grants permit metadata/view/download; Edit also permits metadata changes and file replacement. Only the owner can grant/revoke access or delete a document. A non-owner without access receives the same 404 as a missing document.
+- The application separates API routes, SQLAlchemy models, request/response schemas, security helpers, and static web assets.
+- Alembic manages schema changes; the application does not create production tables implicitly on startup.
+- Public registration always creates a regular member. An administrator is created through the local operator command.
+- `admin` is a global account role. Document ownership belongs to the member who uploaded that document. Other members receive Read or Edit access through document-specific grants.
+- The backend reloads the account on authenticated requests and checks live grant state, so disabling an account or revoking a grant affects subsequent requests immediately.
+- Uploaded files use random internal names and remain in `private_storage/`, outside the public static directory. The upload allowlist is PDF, DOCX, and UTF-8 TXT, with a configurable 10 MB default limit.
+- The browser keeps the short-lived access token in `sessionStorage`. For production use, configure a hardened cookie-based session or equivalent browser token protections.
 
 ## Requirements
 
@@ -51,7 +33,7 @@ The member interface separates the workspace overview, owned document library, o
 - MySQL 8.x (or a compatible MySQL server)
 - VS Code with the Python extension (recommended)
 
-## Run locally in VS Code
+## Local development
 
 Open this project folder in VS Code. In its integrated PowerShell terminal, run:
 
@@ -99,11 +81,17 @@ GRANT SELECT, INSERT, UPDATE ON railway.share_suggestions TO 'trustvault_app'@'%
 
 Open <http://127.0.0.1:8000/> for the sign-in page, <http://127.0.0.1:8000/docs> for the API, and <http://127.0.0.1:8000/health> for the process health endpoint.
 
-## Authentication API
+## API reference
 
-- `POST /api/auth/register` — create a member account; password must be at least 12 characters.
-- `POST /api/auth/login` — validate credentials and return a short-lived JWT.
-- `GET /api/auth/me` — return the authenticated user's account; requires `Authorization: Bearer <token>`.
+Interactive OpenAPI documentation is available at `/docs` when the application is running. All protected endpoints require `Authorization: Bearer <access_token>`.
+
+### Authentication
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Register a regular member account. Passwords must contain at least 12 characters. |
+| `POST` | `/api/auth/login` | Public | Verify credentials and return a short-lived JWT. |
+| `GET` | `/api/auth/me` | Signed-in user | Return the current account profile. |
 
 ## Roles and document access
 
@@ -117,34 +105,43 @@ Open <http://127.0.0.1:8000/> for the sign-in page, <http://127.0.0.1:8000/docs>
 
 ## Document API
 
-All document routes require a bearer token. Ownership and active grants are checked in the backend. Public registration always creates a regular member; users own files they upload and can be readers/editors of files shared with them.
+Document endpoints are scoped to the signed-in account. The server checks ownership or a current document grant on each request; knowing a document ID does not grant access.
 
-- `POST /api/documents` — upload a PDF, DOCX, or UTF-8 TXT file as multipart form data; optional `title` and `category` fields.
-- `GET /api/documents` — list/search the current user's documents. Optional filters: `name`, `owner`, `category`, `date_from`, and `date_to`; results are paginated with `limit` and `offset`.
-- `GET /api/documents/{id}` — retrieve document metadata.
-- `GET /api/documents/shared` — list/search active documents shared with the signed-in member, including access level.
-- `GET /api/documents/sharing-status` — list the signed-in owner's documents with active recipient names and Read/Edit levels; documents without active grants are shown as private. It never lists another owner's documents.
-- `GET/POST /api/documents/{id}/sharing-suggestions` — list pending suggestions or generate recommendations from the owner's active sharing history, prioritizing people previously shared with in the same category. This local recommendation feature does not read document contents or call an external AI service.
-- `POST /api/documents/{id}/sharing-suggestions/{suggestion_id}/decision` — owner approves a suggestion at Read or Edit level, or dismisses it. A suggestion alone never grants access; only an explicit owner approval creates a permission, and that grant is audited.
-- `GET /api/documents/{id}/view` and `/download` — preview/download after an owner or active Read/Edit grant check.
-- `PATCH /api/documents/{id}` and `PUT /api/documents/{id}/file` — update metadata or replace a file as owner or Edit grantee.
-- `DELETE /api/documents/{id}` — delete only as the owner.
-- `GET/POST /api/documents/{id}/permissions` — owner lists grants or shares with an existing account by email at Read/Edit level.
-- `POST /api/documents/{id}/permissions` accepts optional timezone-aware `expires_at`. Sharing defaults to “Until I revoke”; owners can instead choose an expiration date. Expired grants are denied on the next request and removed from the recipient's shared list.
-- `DELETE /api/documents/{id}/permissions/{grant_id}` — owner revokes a grant. Checks use the live database grant, so the next request is denied.
-- `GET /api/documents/{id}/versions` and `GET /api/documents/{id}/versions/{version_id}/download` — list or download a version after the normal document access check.
-- `POST /api/documents/{id}/versions/{version_id}/restore` — owner-only restore; it creates a new version so the current file remains recoverable.
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/documents` | Signed-in user | Upload a PDF, DOCX, or UTF-8 TXT file using multipart form data; accepts optional `title` and `category`. |
+| `GET` | `/api/documents` | Signed-in user | List and search documents the user owns. Supports `name`, `owner`, `category`, `date_from`, `date_to`, `limit`, and `offset`. |
+| `GET` | `/api/documents/shared` | Signed-in user | List/search active documents shared with the user, including access level. |
+| `GET` | `/api/documents/sharing-status` | Owner | List the signed-in owner's documents and active named recipients; documents without grants are shown as private. |
+| `GET` | `/api/documents/{document_id}` | Owner or active Read/Edit grantee | Retrieve document metadata. |
+| `GET` | `/api/documents/{document_id}/view` | Owner or active Read/Edit grantee | Preview an authorized document. |
+| `GET` | `/api/documents/{document_id}/download` | Owner or active Read/Edit grantee | Download an authorized document. |
+| `PATCH` | `/api/documents/{document_id}` | Owner or active Edit grantee | Update document metadata. |
+| `PUT` | `/api/documents/{document_id}/file` | Owner or active Edit grantee | Replace the document file; the prior file is retained as a version. |
+| `DELETE` | `/api/documents/{document_id}` | Owner | Delete the document. |
+| `GET` | `/api/documents/{document_id}/permissions` | Owner | List the document's permission grants. |
+| `POST` | `/api/documents/{document_id}/permissions` | Owner | Grant Read or Edit access to an existing account by email. Optional timezone-aware `expires_at`; omit it for “Until I revoke.” |
+| `DELETE` | `/api/documents/{document_id}/permissions/{grant_id}` | Owner | Revoke a grant. Subsequent requests check the current database grant and are denied. |
+| `GET` | `/api/documents/{document_id}/versions` | Owner or active Read/Edit grantee | List document versions. |
+| `GET` | `/api/documents/{document_id}/versions/{version_id}/download` | Owner or active Read/Edit grantee | Download a version after the standard document access check. |
+| `POST` | `/api/documents/{document_id}/versions/{version_id}/restore` | Owner | Restore a version as a new version, preserving the current file in history. |
+| `GET` | `/api/documents/{document_id}/sharing-suggestions` | Owner | List pending suggestions based on the owner's sharing history. |
+| `POST` | `/api/documents/{document_id}/sharing-suggestions` | Owner | Generate local, history-based suggestions. This feature does not read document contents or call an external AI service. |
+| `POST` | `/api/documents/{document_id}/sharing-suggestions/{suggestion_id}/decision` | Owner | Approve a suggestion at Read/Edit level or dismiss it. Only approval creates a permission, and the grant is audited. |
 
 Successful uploads, metadata/file changes, downloads/previews, deletion, and permission changes are recorded in `audit_events`. Authorization denials for document operations are also recorded. Each new event is HMAC-sealed and linked to a locked database checkpoint; `/api/admin/audit-integrity` verifies the chain. Events from before migration `0004` remain marked as legacy/unsealed. Keep the HMAC key outside MySQL. This detects database-only edits but not a fully compromised application host; production should also restrict database writer privileges and retain signed checkpoints or immutable backups off-database. The admin page shows repeated-denial alerts, audit-chain status, activity filters, and pagination.
 
-## Admin activity API
+## Administration API
 
-- `GET /api/admin/overview` — administrator-only counts and seven days of daily activity.
-- `GET /api/admin/activity` — administrator-only activity list. Optional filters: `action`, `outcome`, `search`, `date_from`, `date_to`, `limit`, and `offset`.
-- `GET /api/admin/audit-integrity` — administrator-only HMAC-chain verification summary; returns integrity status and counts, never event contents.
-- `GET /api/admin/users` — administrator-only account list/search; exposes no password hashes.
-- `PATCH /api/admin/users/{id}/status` — administrator-only account disable/enable. Disabling blocks sign-in immediately and revokes inbound and outbound grants; re-enabling does not restore them. The active admin cannot disable themself or the last active admin.
-- `/admin` — administrator activity dashboard. The HTML page itself contains no privileged data; its API requests still require an administrator token.
+Every endpoint in this section requires an administrator account. The `/admin` page is the activity dashboard; its data requests are still authorized by the API.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/overview` | Return account/document counts and seven days of daily activity. |
+| `GET` | `/api/admin/activity` | Search and paginate activity. Supports `action`, `outcome`, `search`, `date_from`, `date_to`, `limit`, and `offset`. |
+| `GET` | `/api/admin/audit-integrity` | Verify the HMAC audit chain and return integrity status and counts. |
+| `GET` | `/api/admin/users` | List/search accounts without exposing password hashes. |
+| `PATCH` | `/api/admin/users/{user_id}/status` | Disable or enable an account. Disabling blocks sign-in and revokes its inbound/outbound grants; enabling does not restore grants. The active administrator and last active administrator cannot be disabled. |
 
 ## Security tests
 
