@@ -1,6 +1,34 @@
-# TrustVault — Python Edition
+# 🔐 TrustVault
 
-TrustVault is a secure document management and sharing application built with FastAPI, SQLAlchemy, MySQL, JWT authentication, and an HTML/CSS/JavaScript interface. It provides registration, private document upload and search, per-document Read/Edit sharing with optional expiry, owner-reviewed smart sharing suggestions, file version history, integrity-checked downloads, immediate revocation, and a tamper-evident activity chain.
+### Private documents. Deliberate access. Verifiable activity.
+
+TrustVault is a secure document workspace built with **FastAPI, MySQL, SQLAlchemy, JWT, and HTML/CSS/JavaScript**. Documents stay private until their owner grants a named person access. The server checks permissions on every request and records allowed and denied activity.
+
+| Authentication | Storage | Permissions | Evidence |
+|---|---|---|---|
+| Argon2 passwords + short-lived JWTs | Private file directory + SHA-256 checks | Per-document Read/Edit, expiry, immediate revocation | HMAC-linked audit events + security tests |
+
+## What you can do
+
+- Create an account and manage documents in a role-aware workspace.
+- Upload, organize, filter, preview, download, replace, and restore PDF, DOCX, and TXT files.
+- Share a document with a registered person using **Read** or **Edit** access, with optional expiry.
+- Review who has access, revoke a grant, and see the change take effect on the next request.
+- View administrator activity, denied access alerts, and audit-chain integrity status.
+- Generate local, history-based sharing suggestions. Suggestions never grant access unless the owner approves them.
+
+## Demo walkthrough
+
+Use sample documents only. The demo accounts will be listed here after the dedicated accounts are prepared.
+
+1. Sign in as the **Owner** and upload a sample document.
+2. Share it with **Viewer 1** using Read access.
+3. Sign in as Viewer 1 and open the document from **Shared with me**.
+4. Sign in as **Viewer 2**, who has no grant, and confirm the document cannot be opened or downloaded.
+5. Revoke Viewer 1's access as the owner; confirm Viewer 1 is blocked on their next request.
+6. Sign in as the **Administrator** and review the recorded allowed and denied activity.
+
+The automated access-control tests exercise the same boundary without relying on the frontend. See [Security tests](#security-tests).
 
 The member interface separates the workspace overview, owned document library, outgoing shares, and incoming shared documents into dedicated responsive screens. The sign-in, member workspace, and administrator activity console share a dark blue theme. Owners can see which files are private, who has an active grant, and each recipient's Read/Edit level from “Shared by me.”
 
