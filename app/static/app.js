@@ -132,8 +132,9 @@ async function openShareDialog(item) {
   syncShareExpiryFields();
   shareMessage.textContent = '';
   shareMessage.classList.remove('success');
+  document.querySelector('#share-suggestions').replaceChildren();
   shareDialog.showModal();
-  await loadGrants();
+  await Promise.all([loadGrants(), loadShareSuggestions()]);
 }
 
 async function openVersionHistory(item, isOwner) {
@@ -586,6 +587,79 @@ async function loadGrants() {
   }
 }
 
+function renderShareSuggestions(items) {
+  const container = document.querySelector('#share-suggestions');
+  container.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'No pending suggestions. Try generating suggestions after you have shared documents in this category.';
+    container.append(empty);
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement('article');
+    card.className = 'suggestion-card';
+    const identity = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = item.recipient_name;
+    const email = document.createElement('span');
+    email.className = 'muted';
+    email.textContent = item.recipient_email;
+    const rationale = document.createElement('p');
+    rationale.textContent = item.rationale;
+    identity.append(name, email, rationale);
+
+    const actions = document.createElement('div');
+    actions.className = 'suggestion-actions';
+    const access = document.createElement('select');
+    access.setAttribute('aria-label', `Permission for ${item.recipient_name}`);
+    access.innerHTML = '<option value="read">Read</option><option value="edit">Edit</option>';
+    const approve = document.createElement('button');
+    approve.type = 'button';
+    approve.className = 'primary';
+    approve.textContent = 'Approve';
+    approve.addEventListener('click', () => decideShareSuggestion(item, 'approve', access.value));
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'secondary';
+    dismiss.textContent = 'Dismiss';
+    dismiss.addEventListener('click', () => decideShareSuggestion(item, 'dismiss', 'read'));
+    actions.append(access, approve, dismiss);
+    card.append(identity, actions);
+    container.append(card);
+  }
+}
+
+async function loadShareSuggestions() {
+  const container = document.querySelector('#share-suggestions');
+  try {
+    const items = await apiRequest(`/api/documents/${sharingDocument.id}/sharing-suggestions`);
+    renderShareSuggestions(items);
+  } catch (error) {
+    container.textContent = error.message;
+  }
+}
+
+async function decideShareSuggestion(item, decision, accessLevel) {
+  try {
+    await apiRequest(`/api/documents/${sharingDocument.id}/sharing-suggestions/${item.id}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, access_level: accessLevel }),
+    });
+    shareMessage.textContent = decision === 'approve'
+      ? 'Suggestion approved. Access is now active.'
+      : 'Suggestion dismissed. No access was granted.';
+    shareMessage.classList.add('success');
+    if (decision === 'approve') await refreshCollections(true);
+    await Promise.all([loadGrants(), loadShareSuggestions()]);
+  } catch (error) {
+    shareMessage.textContent = error.message;
+    shareMessage.classList.remove('success');
+  }
+}
+
 async function loadAccount() {
   if (!sessionStorage.getItem(tokenKey)) return;
   try {
@@ -722,6 +796,24 @@ document.querySelector('#share-form').addEventListener('submit', async event => 
     await loadGrants();
   } catch (error) {
     shareMessage.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+document.querySelector('#suggest-people').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  shareMessage.textContent = '';
+  try {
+    const items = await apiRequest(`/api/documents/${sharingDocument.id}/sharing-suggestions`, { method: 'POST' });
+    renderShareSuggestions(items);
+    shareMessage.textContent = items.length
+      ? `${items.length} owner-reviewed suggestion${items.length === 1 ? '' : 's'} ready.`
+      : 'No new suggestions. Share a document with people in this category first.';
+    shareMessage.classList.add('success');
+  } catch (error) {
+    shareMessage.textContent = error.message;
+    shareMessage.classList.remove('success');
   } finally {
     button.disabled = false;
   }
