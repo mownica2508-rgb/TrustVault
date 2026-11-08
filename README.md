@@ -2,6 +2,13 @@
 
 TrustVault is a document management and sharing application built with **FastAPI, SQLAlchemy, MySQL, JWT authentication, and HTML/CSS/JavaScript**. Documents are private by default. The server verifies ownership or an active per-document grant for every document request.
 
+## Project links
+
+| Resource | Link |
+|---|---|
+| **Live application** | [Open TrustVault](https://trustvault-production-8244.up.railway.app) |
+| **Public source repository** | [mownica2508-rgb/TrustVault](https://github.com/mownica2508-rgb/TrustVault/tree/main) |
+
 > **Demo logins:** The reviewer accounts are listed directly below. Viewer 1 has an active grant to the owner's sample document; Viewer 2 has no grant and should be denied.
 
 ## Demo accounts
@@ -184,7 +191,7 @@ The password is prompted without echoing to the terminal. The command refuses to
 
 ## Deployment preparation
 
-Set `DATABASE_URL` and a new `JWT_SECRET` (at least 32 characters) in the hosting environment, then run `alembic upgrade head`. Start the app with Uvicorn on `0.0.0.0` and the port supplied by your host. Configure `STORAGE_DIR` to a persistent private disk; local document files must not be placed in the public static folder or an ephemeral deployment filesystem. Use HTTPS and a production MySQL service. This repository is ready for deployment configuration, but you still need to choose a host, configure its secrets/storage, and publish it to receive a live website URL.
+The application is deployed on Railway at [trustvault-production-8244.up.railway.app](https://trustvault-production-8244.up.railway.app). The public source is available at [mownica2508-rgb/TrustVault](https://github.com/mownica2508-rgb/TrustVault/tree/main). The deployment uses environment-provided secrets, MySQL, and Uvicorn. For another deployment, configure `DATABASE_URL`, a new `JWT_SECRET` (at least 32 characters), run `alembic upgrade head`, and start Uvicorn on `0.0.0.0` using the port supplied by the host. Configure `STORAGE_DIR` to a persistent private disk; local document files must not be placed in the public static folder or an ephemeral deployment filesystem. Use HTTPS and persistent private storage.
 
 ## Configuration
 
