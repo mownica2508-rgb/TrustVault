@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.file_storage import UploadRejected, remove_stored_file, save_upload, stored_path, verify_file_digest
 from app.models.document import Document, DocumentVersion
 from app.models.permission import AccessLevel, DocumentPermission
+from app.models.share_suggestion import ShareSuggestion
 from app.models.user import User
 from app.schemas.document import (
     DocumentResponse,
@@ -22,6 +23,8 @@ from app.schemas.document import (
     ShareRequest,
     SharedRecipient,
     SharedDocumentResponse,
+    ShareSuggestionDecision,
+    ShareSuggestionResponse,
 )
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -361,8 +364,187 @@ def grant_permission(
         )
         db.add(grant)
         action = "permission_granted"
+    pending_suggestion = db.scalar(
+        select(ShareSuggestion).where(
+            ShareSuggestion.document_id == document.id,
+            ShareSuggestion.recipient_id == recipient.id,
+            ShareSuggestion.status == "pending",
+        )
+    )
+    if pending_suggestion is not None:
+        pending_suggestion.status = "dismissed"
+        pending_suggestion.decided_at = datetime.now(timezone.utc)
     _audit(db, user.id, action, "success", document.id, recipient_id=recipient.id,
            access_level=payload.access_level.value)
+    db.commit()
+    db.refresh(grant)
+    return PermissionResponse(
+        id=grant.id,
+        recipient_email=recipient.email,
+        recipient_name=recipient.full_name,
+        access_level=grant.access_level,
+        created_at=grant.created_at,
+        expires_at=grant.expires_at,
+    )
+
+
+def _share_suggestion_response(item: ShareSuggestion) -> ShareSuggestionResponse:
+    return ShareSuggestionResponse(
+        id=item.id,
+        recipient_email=item.recipient.email,
+        recipient_name=item.recipient.full_name,
+        score=item.score,
+        rationale=item.rationale,
+        status=item.status,
+        created_at=item.created_at,
+    )
+
+
+@router.get("/{document_id}/sharing-suggestions", response_model=list[ShareSuggestionResponse])
+def list_sharing_suggestions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ShareSuggestionResponse]:
+    document = _require_owner(db, document_id, user, "share_suggestions_list")
+    items = db.scalars(
+        select(ShareSuggestion).where(
+            ShareSuggestion.document_id == document.id,
+            ShareSuggestion.status == "pending",
+        )
+    ).all()
+    active_grants = db.scalars(
+        select(DocumentPermission.recipient_id).where(
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > datetime.now(timezone.utc)),
+        )
+    ).all()
+    active_recipient_ids = set(active_grants)
+    visible = [item for item in items if item.recipient_id not in active_recipient_ids]
+    return [_share_suggestion_response(item) for item in sorted(visible, key=lambda entry: (-entry.score, entry.recipient.email))]
+
+
+@router.post("/{document_id}/sharing-suggestions", response_model=list[ShareSuggestionResponse])
+def create_sharing_suggestions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ShareSuggestionResponse]:
+    """Recommend likely recipients from this owner's past grants, without reading file content."""
+    document = _require_owner(db, document_id, user, "share_suggestions_generate")
+    now = datetime.now(timezone.utc)
+    active_grants = db.scalars(
+        select(DocumentPermission).where(
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > now),
+        )
+    ).all()
+    current_recipient_ids = {grant.recipient_id for grant in active_grants}
+
+    # Recommendations use only this owner's permission history and document category.
+    # No document bytes, title, or metadata leave the database or get sent to a model.
+    history_rows = db.execute(
+        select(DocumentPermission.recipient_id, Document.category)
+        .join(Document, Document.id == DocumentPermission.document_id)
+        .where(
+            Document.owner_id == user.id,
+            Document.id != document.id,
+            DocumentPermission.revoked_at.is_(None),
+            or_(DocumentPermission.expires_at.is_(None), DocumentPermission.expires_at > now),
+        )
+    ).all()
+    same_category_counts: dict[int, int] = {}
+    all_counts: dict[int, int] = {}
+    current_category = (document.category or "").strip().casefold()
+    for recipient_id, category in history_rows:
+        all_counts[recipient_id] = all_counts.get(recipient_id, 0) + 1
+        if current_category and (category or "").strip().casefold() == current_category:
+            same_category_counts[recipient_id] = same_category_counts.get(recipient_id, 0) + 1
+
+    candidate_ids = set(all_counts) - current_recipient_ids - {user.id}
+    existing_rows = db.scalars(
+        select(ShareSuggestion).where(ShareSuggestion.document_id == document.id)
+    ).all()
+    already_suggested = {item.recipient_id for item in existing_rows}
+    candidates = db.scalars(
+        select(User).where(User.id.in_(candidate_ids), User.is_active.is_(True))
+    ).all() if candidate_ids else []
+    suggestions: list[ShareSuggestion] = []
+    for candidate in candidates:
+        if candidate.id in already_suggested:
+            continue
+        same_category = same_category_counts.get(candidate.id, 0)
+        score = same_category * 3 + all_counts[candidate.id]
+        rationale = (
+            f"Previously received access to {same_category} other document(s) in this category."
+            if same_category
+            else f"Previously received access to {all_counts[candidate.id]} other document(s) from you."
+        )
+        suggestion = ShareSuggestion(
+            document_id=document.id,
+            recipient_id=candidate.id,
+            score=score,
+            rationale=rationale,
+            status="pending",
+        )
+        db.add(suggestion)
+        suggestions.append(suggestion)
+    _audit(db, user.id, "share_suggestions_generated", "success", document.id,
+           suggestion_count=len(suggestions))
+    db.commit()
+    return list_sharing_suggestions(document_id, db, user)
+
+
+@router.post("/{document_id}/sharing-suggestions/{suggestion_id}/decision", response_model=PermissionResponse | ShareSuggestionResponse)
+def decide_sharing_suggestion(
+    document_id: int,
+    suggestion_id: int,
+    payload: ShareSuggestionDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PermissionResponse | ShareSuggestionResponse:
+    document = _require_owner(db, document_id, user, "share_suggestion_decision")
+    suggestion = db.scalar(
+        select(ShareSuggestion).where(
+            ShareSuggestion.id == suggestion_id,
+            ShareSuggestion.document_id == document.id,
+            ShareSuggestion.status == "pending",
+        )
+    )
+    if suggestion is None:
+        _deny(db, user, "share_suggestion_decision", document.id, status_code=404,
+              detail="Pending suggestion not found")
+    recipient = db.get(User, suggestion.recipient_id)
+    if recipient is None or not recipient.is_active:
+        _deny(db, user, "share_suggestion_decision", document.id, status_code=404,
+              detail="Account not found")
+
+    suggestion.decided_at = datetime.now(timezone.utc)
+    if payload.decision == "dismiss":
+        suggestion.status = "dismissed"
+        _audit(db, user.id, "share_suggestion_dismissed", "success", document.id,
+               recipient_id=recipient.id)
+        db.commit()
+        return _share_suggestion_response(suggestion)
+
+    if _active_permission(db, document.id, recipient.id) is not None:
+        raise HTTPException(status_code=409, detail="This person already has access to the document")
+    grant = DocumentPermission(
+        document_id=document.id,
+        recipient_id=recipient.id,
+        granted_by_id=user.id,
+        access_level=payload.access_level,
+        expires_at=None,
+    )
+    db.add(grant)
+    suggestion.status = "approved"
+    _audit(db, user.id, "share_suggestion_approved", "success", document.id,
+           recipient_id=recipient.id, access_level=payload.access_level.value)
+    _audit(db, user.id, "permission_granted", "success", document.id,
+           recipient_id=recipient.id, access_level=payload.access_level.value,
+           source="owner_approved_suggestion")
     db.commit()
     db.refresh(grant)
     return PermissionResponse(
@@ -668,5 +850,3 @@ def delete_document(
     for storage_name in storage_names:
         remove_stored_file(storage_name)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
