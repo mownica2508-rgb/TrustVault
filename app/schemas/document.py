@@ -79,3 +79,19 @@ class DocumentVersionResponse(BaseModel):
 class DocumentSharingStatus(DocumentResponse):
     active_share_count: int
     recipients: list[SharedRecipient]
+
+
+class ShareSuggestionResponse(BaseModel):
+    id: int
+    recipient_email: EmailStr
+    recipient_name: str
+    score: int
+    rationale: str
+    status: str
+    created_at: datetime
+
+
+class ShareSuggestionDecision(BaseModel):
+    decision: str = Field(pattern="^(approve|dismiss)$")
+    access_level: AccessLevel = AccessLevel.READ
+
