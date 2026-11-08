@@ -49,4 +49,12 @@ Added an admin-only API and `/admin` activity console with account/document/shar
 
 Reviewed the supplied `TrustVault-master.zip` as a behavior and documentation reference only; no Java source was copied. Its README describes registration, administrator/owner/viewer roles, document management, sharing and revocation, audit activity, and a Gemini assistant. Its own documentation identifies upload/download validation and comprehensive authorization testing as unfinished or requiring further verification.
 
-For the Python edition, prioritize complete server-side document authorization, private and validated file handling, immediate revocation, useful audit records, and automated tests that demonstrate the boundaries. Keep AI integration out of scope unless the required security flows are finished and there is time to implement and verify it responsibly.
+For the Python edition, prioritize complete server-side document authorization, private and validated file handling, immediate revocation, useful audit records, and automated tests that demonstrate the boundaries. Any AI-assisted sharing feature must remain advisory and require explicit owner approval before it creates a permission.
+
+### 2026-11-08 — Owner-reviewed sharing suggestions
+
+- **Prompt summary:** Add the useful missing sharing-assistance feature while preserving TrustVault's private-by-default model and existing permission workflows.
+- **Produced:** Added local suggestions ranked from the owner's active share history, prioritizing recipients previously shared with in the same category. Owners can approve a suggestion at Read/Edit level or dismiss it. Suggestions and decisions are audit logged.
+- **Safety choice:** This implementation is a local recommendation heuristic, not a hosted LLM. It does not read file contents or send titles, categories, emails, or file data to an external provider. A suggestion never grants access without a separate owner approval.
+- **Migration:** Added Alembic revision `0005_share_suggestions`; deployment must apply `alembic upgrade head` and grant the runtime database account `SELECT, INSERT, UPDATE` on `share_suggestions`.
+- **Verification:** Not run in this change; the feature should be exercised locally after migration before publishing the update.
