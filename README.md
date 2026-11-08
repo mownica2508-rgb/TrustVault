@@ -2,6 +2,19 @@
 
 TrustVault is a document management and sharing application built with **FastAPI, SQLAlchemy, MySQL, JWT authentication, and HTML/CSS/JavaScript**. Documents are private by default. The server verifies ownership or an active per-document grant for every document request.
 
+> **Demo logins:** The reviewer accounts are listed directly below. Viewer 1 has an active grant to the owner's sample document; Viewer 2 has no grant and should be denied.
+
+## Demo accounts
+
+Use these disposable accounts to evaluate the public demo. These passwords are public and must not be reused for personal or production accounts.
+
+| Role | Email | Password | What to verify |
+|---|---|---|---|
+| Administrator | `mownica2508@gmail.com` | `mownicA@#123` | Open the activity console and review audit activity and integrity status. |
+| Document owner | `owner@gmail.com` | `passOwner@#123` | Manage a document and grant or revoke access. |
+| Viewer 1 — shared | `viewer1@gmail.com` | `Viewer@#12345` | Access the owner's document through the active grant. |
+| Viewer 2 — unshared | `viewer2@gmail.com` | `Viewer@#12345` | Verify the owner's document cannot be reached without a grant. |
+
 ## Capabilities
 
 | Capability | What the application provides |
@@ -75,7 +88,7 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-For a deployed environment, use a separate schema-migration account in `MIGRATION_DATABASE_URL` and keep `DATABASE_URL` as the app's runtime account. Grant the runtime account only the DML each table needs; specifically, allow `SELECT, INSERT` on `audit_events`, `SELECT` plus column-level `UPDATE(last_event_id,last_hash)` on `audit_chain_state`, and `SELECT, INSERT, UPDATE` on `share_suggestions`. Do not grant runtime `UPDATE`/`DELETE` on `audit_events`, or `INSERT`/`DELETE` or update access to the legacy checkpoint fields on `audit_chain_state`. Migrations `0004` and `0005` create their security and suggestion tables. Apply Alembic with the migration account, then run the server with the least-privilege runtime account.
+For a deployed environment, use a separate schema-migration account in `MIGRATION_DATABASE_URL` and keep `DATABASE_URL` as the app's runtime account. Grant the runtime account only the DML each table needs. The current audit writer inserts an event and then updates its `event_hash`, so it requires `SELECT, INSERT, UPDATE(event_hash)` on `audit_events`, plus `SELECT` and column-level `UPDATE(last_event_id,last_hash)` on `audit_chain_state`. This is a narrow privilege, but it means the table is not strictly append-only at the database-permission layer. HMAC verification can detect changes without the signing key; a future strict append-only design should remove this update requirement. The runtime account also needs `SELECT, INSERT, UPDATE` on `share_suggestions`. Do not grant `DELETE` on `audit_events`, or `INSERT`/`DELETE` or update access to other `audit_chain_state` fields. Migrations `0004` and `0005` create their security and suggestion tables. Apply Alembic with the migration account, then run the server with the least-privilege runtime account.
 
 For example, after migration, grant the runtime account access to the new table (replace the database and account names for your host):
 
@@ -106,17 +119,6 @@ Interactive OpenAPI documentation is available at `/docs` when the application i
 | Owner | The member who uploaded a specific document. The owner can read, edit, share, revoke, and delete that document. |
 | Read access | A named registered member can see the document in “Shared with me”, view supported previews, and download it. |
 | Edit access | Includes Read and allows document title/category changes and file replacement. It does not allow sharing, revoking, or deleting. |
-
-## Demo accounts
-
-These disposable accounts are for evaluating the public demo. The owner has a sample document; Viewer 1 has an active grant to it, while Viewer 2 has no grant and should be denied. These passwords must not be reused for personal or production accounts.
-
-| Demo account | Email | Password | Demonstration |
-|---|---|---|---|
-| Administrator | `mownica2508@gmail.com` | `mownicA@#123` | Open the administrator activity console and inspect audit activity/integrity. |
-| Document owner | `owner@gmail.com` | `Owner@#123` | Upload/manage a document and grant or revoke access. |
-| Viewer 1 | `viewer1@gmail.com` | `Viewer@#12345` | Sign in and access the owner's document through the active grant. |
-| Viewer 2 | `viewer2@gmail.com` | `Viewer@#12345` | Sign in without a grant and verify the owner's document cannot be reached. |
 
 ## Document API
 
