@@ -58,3 +58,15 @@ For the Python edition, prioritize complete server-side document authorization, 
 - **Safety choice:** This implementation is a local recommendation heuristic, not a hosted LLM. It does not read file contents or send titles, categories, emails, or file data to an external provider. A suggestion never grants access without a separate owner approval.
 - **Migration:** Added Alembic revision `0005_share_suggestions`; deployment must apply `alembic upgrade head` and grant the runtime database account `SELECT, INSERT, UPDATE` on `share_suggestions`.
 - **Verification:** Not run in this change; the feature should be exercised locally after migration before publishing the update.
+
+## Human review: AI mistakes and corrections
+
+This section records specific cases where project-owner review changed or challenged AI output. It is intentionally limited to events that occurred during development.
+
+| AI output or issue | Human review | Outcome |
+|---|---|---|
+| An early README draft included an unwanted walkthrough and presented API routes as prose bullets. | The project owner said the walkthrough did not belong, asked for a more professional README, and requested table-formatted API documentation. | Removed the walkthrough framing, expanded the capability inventory, and documented authentication, document, and administration endpoints in tables. |
+| Deployment troubleshooting blurred the boundary between terminal commands and SQL entered into a database query editor. | The project owner shared the resulting SQL parser errors and clarified which Railway account and connection were active. | Separated the instructions: Railway CLI commands run in PowerShell; SQL statements run in MySQL Workbench or the Railway database query tool. Deployment instructions still need to be followed against the correct Railway project and its own variables. |
+| A quick database-permission workaround for the audit failure was to grant column-level `UPDATE(event_hash)` on `audit_events`. That makes the current audit writer work, but it is weaker than describing the event table as strictly append-only. | The project owner reported the original `UPDATE command denied` failure and questioned the earlier SQL guidance. | The current code still flushes an audit row and then updates its `event_hash`; this limitation is not fixed by documentation. Do not claim that the database account has no ability to update audit rows. A follow-up should redesign sealing so the runtime account can append sealed events without updating `audit_events`, then update the privilege guide and verify on MySQL. |
+
+The project owner supplied actual runtime logs, rejected inaccurate or unwanted documentation, and checked the suggested SQL in the target tools. These examples show review and correction; they do not prove that every AI-generated change is correct. The automated test suite and a real deployment must still be checked before making claims about a release.
