@@ -4,18 +4,22 @@ TrustVault is a document management and sharing application built with **FastAPI
 
 ## Capabilities
 
-| Area | Implementation |
+| Capability | What the application provides |
 |---|---|
-| Authentication | Argon2 password hashing, short-lived JWTs, public registration as a regular member |
-| Document management | Private PDF, DOCX, and UTF-8 TXT uploads; search, preview, download, replacement, version history, and restore |
-| Access control | Named per-document Read/Edit grants, optional expiry, immediate revocation, owner-only sharing and deletion |
-| File integrity | Random private storage names and SHA-256 verification before serving files |
-| Audit | HMAC-linked activity records, denied-action logging, administrator activity view, and chain verification |
-| Sharing assistance | Local history-based suggestions; owner approval is required before a grant is created |
-| Administration | User status controls, audit activity filters, denied-access alerts, and integrity status |
-| Testing | Pytest coverage for IDOR attempts, authorization boundaries, revocation, audit integrity, and role escalation |
-
-The member workspace provides separate Overview, My Documents, Shared by Me, and Shared with Me screens. The administrator activity console is available at `/admin`.
+| Sign-up and sign-in | Member registration, email/password login, Argon2 password hashing, JWT authentication, and a current-account endpoint. Public registration cannot create an administrator. |
+| Roles and ownership | A protected administrator role plus regular member accounts. A member becomes the owner of each document they upload; other members receive only document-specific grants. |
+| Member workspace | Separate Overview, My Documents, Shared by Me, and Shared with Me screens, with document counts and account context. |
+| Upload validation | PDF, DOCX, and UTF-8 TXT allowlist, configurable maximum upload size, and server-side validation. |
+| Private file storage | Random internal storage names outside the static web directory, stored-file digest verification, and authorized preview/download routes. |
+| Document organization | Titles and categories, metadata editing, file replacement, deletion by the owner, version history, and restoration as a new version. |
+| Search and filters | Search documents using name, owner, category, and date filters, with pagination. Results remain scoped to documents the signed-in user may discover. |
+| Named sharing | Owners can grant an existing member Read or Edit access, see active recipients, and choose an expiry date or “Until I revoke.” |
+| Revocation and expiry | Owners can revoke access; each request checks current permission state. Expired and revoked grants stop authorizing later requests. |
+| Sharing suggestions | Local recommendations based on the owner's active sharing history and category labels. The owner must approve a suggestion before it creates a grant. |
+| Audit trail | Records successful uploads, previews/downloads, document changes and deletions, permission changes, and denied document-access attempts. |
+| Audit integrity | HMAC-linked audit events, a protected database checkpoint, and an administrator integrity-verification endpoint. |
+| Administrator console | Activity overview, date/action/outcome/search filters, denied-access signals, audit-integrity status, user listing, and account enable/disable controls. Admin status does not automatically grant document-content access. |
+| Automated security tests | Pytest checks for cross-account IDOR attempts, read/edit boundaries, revocation, expiry, version access, audit tampering, administrator boundaries, and role escalation. |
 
 ## Architecture and access model
 
@@ -102,6 +106,17 @@ Interactive OpenAPI documentation is available at `/docs` when the application i
 | Owner | The member who uploaded a specific document. The owner can read, edit, share, revoke, and delete that document. |
 | Read access | A named registered member can see the document in “Shared with me”, view supported previews, and download it. |
 | Edit access | Includes Read and allows document title/category changes and file replacement. It does not allow sharing, revoking, or deleting. |
+
+## Demo accounts
+
+These disposable accounts are for evaluating the public demo. The owner has a sample document; Viewer 1 has an active grant to it, while Viewer 2 has no grant and should be denied. These passwords must not be reused for personal or production accounts.
+
+| Demo account | Email | Password | Demonstration |
+|---|---|---|---|
+| Administrator | `mownica2508@gmail.com` | `mownicA@#123` | Open the administrator activity console and inspect audit activity/integrity. |
+| Document owner | `owner@gmail.com` | `passOwner@#123` | Upload/manage a document and grant or revoke access. |
+| Viewer 1 | `viewer1@gmail.com` | `Viewer@#12345` | Sign in and access the owner's document through the active grant. |
+| Viewer 2 | `viewer2@gmail.com` | `Viewer@#12345` | Sign in without a grant and verify the owner's document cannot be reached. |
 
 ## Document API
 
