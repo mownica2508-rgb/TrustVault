@@ -1,6 +1,6 @@
 # TrustVault — Python Edition
 
-TrustVault is a secure document management and sharing application built with FastAPI, SQLAlchemy, MySQL, JWT authentication, and an HTML/CSS/JavaScript interface. It provides registration, private document upload and search, per-document Read/Edit sharing with optional expiry, file version history, integrity-checked downloads, immediate revocation, and a tamper-evident activity chain.
+TrustVault is a secure document management and sharing application built with FastAPI, SQLAlchemy, MySQL, JWT authentication, and an HTML/CSS/JavaScript interface. It provides registration, private document upload and search, per-document Read/Edit sharing with optional expiry, owner-reviewed smart sharing suggestions, file version history, integrity-checked downloads, immediate revocation, and a tamper-evident activity chain.
 
 The member interface separates the workspace overview, owned document library, outgoing shares, and incoming shared documents into dedicated responsive screens. The sign-in, member workspace, and administrator activity console share a dark blue theme. Owners can see which files are private, who has an active grant, and each recipient's Read/Edit level from “Shared by me.”
 
@@ -61,7 +61,13 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-For a deployed environment, use a separate schema-migration account in `MIGRATION_DATABASE_URL` and keep `DATABASE_URL` as the app's runtime account. Grant the runtime account only the DML each table needs; specifically, allow `SELECT, INSERT` on `audit_events` and `SELECT` plus column-level `UPDATE(last_event_id,last_hash)` on `audit_chain_state`. Do not grant runtime `UPDATE`/`DELETE` on `audit_events`, or `INSERT`/`DELETE` or update access to the legacy checkpoint fields on `audit_chain_state`. Migration `0004` creates and seeds the singleton state row. Apply Alembic with the migration account, then run the server with the least-privilege runtime account.
+For a deployed environment, use a separate schema-migration account in `MIGRATION_DATABASE_URL` and keep `DATABASE_URL` as the app's runtime account. Grant the runtime account only the DML each table needs; specifically, allow `SELECT, INSERT` on `audit_events`, `SELECT` plus column-level `UPDATE(last_event_id,last_hash)` on `audit_chain_state`, and `SELECT, INSERT, UPDATE` on `share_suggestions`. Do not grant runtime `UPDATE`/`DELETE` on `audit_events`, or `INSERT`/`DELETE` or update access to the legacy checkpoint fields on `audit_chain_state`. Migrations `0004` and `0005` create their security and suggestion tables. Apply Alembic with the migration account, then run the server with the least-privilege runtime account.
+
+For example, after migration, grant the runtime account access to the new table (replace the database and account names for your host):
+
+```sql
+GRANT SELECT, INSERT, UPDATE ON railway.share_suggestions TO 'trustvault_app'@'%';
+```
 
 Open <http://127.0.0.1:8000/> for the sign-in page, <http://127.0.0.1:8000/docs> for the API, and <http://127.0.0.1:8000/health> for the process health endpoint.
 
@@ -90,11 +96,13 @@ All document routes require a bearer token. Ownership and active grants are chec
 - `GET /api/documents/{id}` — retrieve document metadata.
 - `GET /api/documents/shared` — list/search active documents shared with the signed-in member, including access level.
 - `GET /api/documents/sharing-status` — list the signed-in owner's documents with active recipient names and Read/Edit levels; documents without active grants are shown as private. It never lists another owner's documents.
+- `GET/POST /api/documents/{id}/sharing-suggestions` — list pending suggestions or generate recommendations from the owner's active sharing history, prioritizing people previously shared with in the same category. This local recommendation feature does not read document contents or call an external AI service.
+- `POST /api/documents/{id}/sharing-suggestions/{suggestion_id}/decision` — owner approves a suggestion at Read or Edit level, or dismisses it. A suggestion alone never grants access; only an explicit owner approval creates a permission, and that grant is audited.
 - `GET /api/documents/{id}/view` and `/download` — preview/download after an owner or active Read/Edit grant check.
 - `PATCH /api/documents/{id}` and `PUT /api/documents/{id}/file` — update metadata or replace a file as owner or Edit grantee.
 - `DELETE /api/documents/{id}` — delete only as the owner.
 - `GET/POST /api/documents/{id}/permissions` — owner lists grants or shares with an existing account by email at Read/Edit level.
-- `POST /api/documents/{id}/permissions` accepts optional timezone-aware `expires_at`; expired grants are denied on the next request and removed from the recipient's shared list.
+- `POST /api/documents/{id}/permissions` accepts optional timezone-aware `expires_at`. Sharing defaults to “Until I revoke”; owners can instead choose an expiration date. Expired grants are denied on the next request and removed from the recipient's shared list.
 - `DELETE /api/documents/{id}/permissions/{grant_id}` — owner revokes a grant. Checks use the live database grant, so the next request is denied.
 - `GET /api/documents/{id}/versions` and `GET /api/documents/{id}/versions/{version_id}/download` — list or download a version after the normal document access check.
 - `POST /api/documents/{id}/versions/{version_id}/restore` — owner-only restore; it creates a new version so the current file remains recoverable.
@@ -121,6 +129,8 @@ python -m pytest -q
 It checks IDOR attempts across metadata, file, permission, and version routes; Read/Edit boundaries; immediate revocation and expiry; version restore ownership; file integrity; audit tamper detection; repeated-denial alerts; admin-only activity access; admin/content separation; and signup role escalation.
 
 The storage directory is local and private for development. It is created on the first successful upload and is never mounted as a static web directory. Backups, malware scanning, and cloud storage are not implemented yet. Before public deployment, set an upload-body limit at the reverse proxy/hosting layer as well as the application file limit.
+
+Smart sharing suggestions are based on the signed-in owner's existing active permission history and category labels. They are deliberately advisory: there is no automatic grant, no document-content analysis, and no external AI provider in this feature.
 
 An admin can be created from the activated VS Code terminal after the database migration:
 
