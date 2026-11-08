@@ -114,7 +114,7 @@ These disposable accounts are for evaluating the public demo. The owner has a sa
 | Demo account | Email | Password | Demonstration |
 |---|---|---|---|
 | Administrator | `mownica2508@gmail.com` | `mownicA@#123` | Open the administrator activity console and inspect audit activity/integrity. |
-| Document owner | `owner@gmail.com` | `passOwner@#123` | Upload/manage a document and grant or revoke access. |
+| Document owner | `owner@gmail.com` | `Owner@#123` | Upload/manage a document and grant or revoke access. |
 | Viewer 1 | `viewer1@gmail.com` | `Viewer@#12345` | Sign in and access the owner's document through the active grant. |
 | Viewer 2 | `viewer2@gmail.com` | `Viewer@#12345` | Sign in without a grant and verify the owner's document cannot be reached. |
 
